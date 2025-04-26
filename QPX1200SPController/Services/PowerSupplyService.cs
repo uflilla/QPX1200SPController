@@ -139,14 +139,35 @@ namespace QPX1200SPController.Services
             if (commandPrefix == "OP1" && (response == "0" || response == "1"))
                 return true;
                 
-            // Check if the response contains the command prefix or a variation of it
-            // Some devices respond with VP1 instead of V1, etc.
-            string altPrefix = commandPrefix.Replace("1", "P1");
-            
-            return response.StartsWith(commandPrefix, StringComparison.OrdinalIgnoreCase) ||
-                   response.StartsWith(altPrefix, StringComparison.OrdinalIgnoreCase) ||
-                   response.Contains(commandPrefix + " ") ||
-                   response.Contains(altPrefix + " ");
+            // Handle specific response formats based on the manual
+            switch (commandPrefix)
+            {
+                case "V1":
+                    return response.StartsWith("V1 ", StringComparison.OrdinalIgnoreCase);
+                    
+                case "I1":
+                    return response.StartsWith("I1 ", StringComparison.OrdinalIgnoreCase);
+                    
+                case "OVP1":
+                    return response.StartsWith("VP1 ", StringComparison.OrdinalIgnoreCase);
+                    
+                case "OCP1":
+                    return response.StartsWith("CP1 ", StringComparison.OrdinalIgnoreCase);
+                    
+                case "V1O":
+                    // V1O? returns <NR2>V format
+                    return response.EndsWith("V", StringComparison.OrdinalIgnoreCase);
+                    
+                case "I1O":
+                    // I1O? returns <NR2>A format
+                    return response.EndsWith("A", StringComparison.OrdinalIgnoreCase);
+                    
+                default:
+                    // Fallback for other commands
+                    string altPrefix = commandPrefix.Replace("1", "P1");
+                    return response.StartsWith(commandPrefix, StringComparison.OrdinalIgnoreCase) ||
+                           response.StartsWith(altPrefix, StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         public async Task<PowerSupplyStatus> GetStatusAsync()
@@ -258,9 +279,78 @@ namespace QPX1200SPController.Services
 
             // Trim any whitespace
             response = response.Trim();
+            
+            // Handle specific response formats based on the command prefix
+            switch (expectedPrefix)
+            {
+                case "V1":
+                    // Format: V1 <NR2><RMT> where <NR2> is in Volts
+                    if (response.StartsWith("V1 ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string numericPart = response.Substring(3).Trim();
+                        if (double.TryParse(numericPart, out double result))
+                            return result;
+                    }
+                    break;
+                    
+                case "I1":
+                    // Format: I1 <NR2><RMT> where <NR2> is in Amps
+                    if (response.StartsWith("I1 ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string numericPart = response.Substring(3).Trim();
+                        if (double.TryParse(numericPart, out double result))
+                            return result;
+                    }
+                    break;
+                    
+                case "OVP1":
+                    // Format: VP1 <NR2><RMT> where <NR2> is in Volts
+                    if (response.StartsWith("VP1 ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string numericPart = response.Substring(4).Trim();
+                        if (double.TryParse(numericPart, out double result))
+                            return result;
+                    }
+                    break;
+                    
+                case "OCP1":
+                    // Format: CP1 <NR2><RMT> where <NR2> is in Amps
+                    if (response.StartsWith("CP1 ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string numericPart = response.Substring(4).Trim();
+                        if (double.TryParse(numericPart, out double result))
+                            return result;
+                    }
+                    break;
+                    
+                case "V1O":
+                    // Format: <NR2>V<RMT> where <NR2> is in Volts
+                    if (response.EndsWith("V", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string numericPart = response.Substring(0, response.Length - 1).Trim();
+                        if (double.TryParse(numericPart, out double result))
+                            return result;
+                    }
+                    break;
+                    
+                case "I1O":
+                    // Format: <NR2>A<RMT> where <NR2> is in Amps
+                    if (response.EndsWith("A", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string numericPart = response.Substring(0, response.Length - 1).Trim();
+                        if (double.TryParse(numericPart, out double result))
+                            return result;
+                    }
+                    break;
+            }
+            
+            // Fallback to generic parsing for other commands or if specific parsing failed
+            // Remove any units (V, A, etc.) and other non-numeric characters
+            string genericNumericPart = "";
+            bool decimalPointFound = false;
 
             // Check if the response contains the expected prefix
-            // Some responses might be prefixed with the command (e.g., "V1 12.345V" or "VP1 12.345V")
+            // Some responses might be prefixed with the command
             if (response.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
                 response.StartsWith(expectedPrefix.Replace("1", "P1"), StringComparison.OrdinalIgnoreCase))
             {
@@ -270,31 +360,23 @@ namespace QPX1200SPController.Services
                 {
                     response = response.Substring(prefixEndIndex).Trim();
                 }
-                else
-                {
-                    throw new FormatException($"Invalid response format: {response}");
-                }
             }
-
-            // Remove any units (V, A, etc.) and other non-numeric characters
-            string numericPart = "";
-            bool decimalPointFound = false;
 
             foreach (char c in response)
             {
                 if (char.IsDigit(c))
                 {
-                    numericPart += c;
+                    genericNumericPart += c;
                 }
                 else if (c == '.' && !decimalPointFound)
                 {
-                    numericPart += c;
+                    genericNumericPart += c;
                     decimalPointFound = true;
                 }
-                else if ((c == '-' || c == '+') && numericPart.Length == 0)
+                else if ((c == '-' || c == '+') && genericNumericPart.Length == 0)
                 {
                     // Allow negative or positive sign at the beginning
-                    numericPart += c;
+                    genericNumericPart += c;
                 }
                 else if (char.IsLetter(c) || c == 'V' || c == 'A')
                 {
@@ -303,13 +385,13 @@ namespace QPX1200SPController.Services
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(numericPart))
+            if (string.IsNullOrWhiteSpace(genericNumericPart))
                 throw new FormatException($"Could not extract numeric value from response: {response}");
 
-            if (double.TryParse(numericPart, out double result))
-                return result;
+            if (double.TryParse(genericNumericPart, out double genericResult))
+                return genericResult;
             else
-                throw new FormatException($"Failed to parse numeric value: {numericPart} from response: {response}");
+                throw new FormatException($"Failed to parse numeric value: {genericNumericPart} from response: {response}");
         }
     }
 }
