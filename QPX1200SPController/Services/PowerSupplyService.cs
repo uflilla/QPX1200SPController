@@ -75,11 +75,11 @@ namespace QPX1200SPController.Services
 
                 // Get voltage
                 string voltageStr = await SendCommandAsync("V1?");
-                status.Voltage = ParseResponseValue(voltageStr, "V1");
+                status.Voltage = double.Parse(voltageStr);
 
                 // Get current
                 string currentStr = await SendCommandAsync("I1?");
-                status.Current = ParseResponseValue(currentStr, "I1");
+                status.Current = double.Parse(currentStr);
 
                 // Calculate power
                 status.Power = status.Voltage * status.Current;
@@ -90,10 +90,10 @@ namespace QPX1200SPController.Services
 
                 // Get protection values
                 string ovpStr = await SendCommandAsync("OVP1?");
-                status.OverVoltageProtection = ParseResponseValue(ovpStr, "OVP1");
+                status.OverVoltageProtection = double.Parse(ovpStr);
 
                 string ocpStr = await SendCommandAsync("OCP1?");
-                status.OverCurrentProtection = ParseResponseValue(ocpStr, "OCP1");
+                status.OverCurrentProtection = double.Parse(ocpStr);
 
                 status.ConnectionStatus = "Connected";
                 return status;
@@ -158,23 +158,6 @@ namespace QPX1200SPController.Services
             // I1O? queries the set current value from the power supply
             string current = await SendCommandAsync("I1O?");
             return double.Parse(current);
-        }
-
-        private double ParseResponseValue(string response, string commandPrefix)
-        {
-            if (string.IsNullOrWhiteSpace(response))
-                throw new FormatException($"Empty response for {commandPrefix}");
-            // Remove known prefixes (e.g., V1, I1, VP1, IP1, OVP1, OCP1) and units (V, A)
-            string cleaned = response.Trim();
-            // Remove prefix if present
-            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, $"^{commandPrefix}P?1?", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            // Remove units
-            cleaned = cleaned.Replace("V", "").Replace("A", "").Trim();
-            // Remove any remaining non-numeric characters
-            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "[^0-9.+-eE]", "");
-            if (double.TryParse(cleaned, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value))
-                return value;
-            throw new FormatException($"Could not parse numeric value from response '{response}' for {commandPrefix}");
         }
     }
 }
