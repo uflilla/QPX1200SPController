@@ -1,0 +1,539 @@
+﻿<Window x:Class="QPX1200SPController.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:QPX1200SPController"
+        xmlns:View="clr-namespace:QPX1200SPController.Views"
+        xmlns:viewModels="clr-namespace:QPX1200SPController.ViewModels"
+        mc:Ignorable="d"
+        Title="QPX1200SP Power Supply Controller"
+        Height="700"
+        Width="1000"
+        WindowStartupLocation="CenterScreen"
+        DataContext="{Binding Main, Source={StaticResource Locator}}">
+
+  <Window.Resources>
+    <Style TargetType="TextBlock">
+      <Setter Property="Margin"
+              Value="5" />
+      <Setter Property="VerticalAlignment"
+              Value="Center" />
+    </Style>
+
+    <Style TargetType="TextBox">
+      <Setter Property="Margin"
+              Value="5" />
+      <Setter Property="Padding"
+              Value="5" />
+      <Setter Property="VerticalAlignment"
+              Value="Center" />
+    </Style>
+
+    <Style TargetType="Button">
+      <Setter Property="Margin"
+              Value="5" />
+      <Setter Property="Padding"
+              Value="10,5" />
+      <Setter Property="MinWidth"
+              Value="80" />
+    </Style>
+  </Window.Resources>
+  <TabControl>
+    <TabItem Header="Live Display">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Connection Panel -->
+        <Border Grid.Row="0"
+                BorderBrush="Gray"
+                BorderThickness="0,0,0,1"
+                Padding="10">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="200" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="IP Address:" />
+            <TextBox Grid.Column="1"
+                     Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="2"
+                    Content="Connect"
+                    Command="{Binding ConnectCommand}"
+                    IsEnabled="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}" />
+            <Button Grid.Column="3"
+                    Content="Disconnect"
+                    Command="{Binding DisconnectCommand}"
+                    IsEnabled="{Binding IsConnected}" />
+            <TextBlock Grid.Column="5"
+                       Text="{Binding ConnectionStatus}"
+                       FontWeight="Bold" />
+          </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+
+          <!-- Live Display Panel -->
+          <Border Grid.Column="0"
+                  BorderBrush="Gray"
+                  BorderThickness="0,0,1,0"
+                  Padding="20">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+
+              <TextBlock Grid.Row="0"
+                         Text="LIVE DISPLAY"
+                         FontSize="20"
+                         FontWeight="Bold"
+                         HorizontalAlignment="Center"
+                         Margin="0,0,0,20" />
+
+              <Grid Grid.Row="1">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Voltage Display -->
+                <Border Grid.Row="0"
+                        BorderBrush="DarkGray"
+                        BorderThickness="1"
+                        Margin="10"
+                        Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}">
+                  <Grid>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="VOLTAGE (V)"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Left"
+                               Margin="10,5,0,0" />
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="1"
+                               Text="{Binding SetVoltage, StringFormat={}Set: {0:F2}V}"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Right"
+                               Margin="0,5,10,0" />
+                    <Viewbox Grid.Row="1"
+                             Grid.Column="0"
+                             Grid.ColumnSpan="2"
+                             Stretch="Uniform"
+                             Margin="10,5,10,10">
+                      <TextBlock Text="{Binding Status.Voltage, StringFormat={}{0:F3}}"
+                                 FontSize="120"
+                                 FontWeight="Bold"
+                                 HorizontalAlignment="Center" />
+                    </Viewbox>
+                  </Grid>
+                </Border>
+
+                <!-- Current Display -->
+                <Border Grid.Row="1"
+                        BorderBrush="DarkGray"
+                        BorderThickness="1"
+                        Margin="10"
+                        Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}">
+                  <Grid>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="CURRENT (A)"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Left"
+                               Margin="10,5,0,0" />
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="1"
+                               Text="{Binding SetCurrent, StringFormat={}Set: {0:F2}A}"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Right"
+                               Margin="0,5,10,0" />
+                    <Viewbox Grid.Row="1"
+                             Grid.Column="0"
+                             Grid.ColumnSpan="2"
+                             Stretch="Uniform"
+                             Margin="10,5,10,10">
+                      <TextBlock Text="{Binding Status.Current, StringFormat={}{0:F3}}"
+                                 FontSize="120"
+                                 FontWeight="Bold"
+                                 HorizontalAlignment="Center" />
+                    </Viewbox>
+                  </Grid>
+                </Border>
+
+                <!-- Power Display -->
+                <Border Grid.Row="2"
+                        BorderBrush="DarkGray"
+                        BorderThickness="1"
+                        Margin="10"
+                        Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}">
+                  <Grid>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="POWER (W)"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Left"
+                               Margin="10,5,0,0" />
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="1"
+                               Text="Max: 1200W"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Right"
+                               Margin="0,5,10,0" />
+                    <Viewbox Grid.Row="1"
+                             Grid.Column="0"
+                             Grid.ColumnSpan="2"
+                             Stretch="Uniform"
+                             Margin="10,5,10,10">
+                      <TextBlock Text="{Binding Status.Power, StringFormat={}{0:F2}}"
+                                 FontSize="120"
+                                 FontWeight="Bold"
+                                 HorizontalAlignment="Center" />
+                    </Viewbox>
+                  </Grid>
+                </Border>
+              </Grid>
+
+              <!-- Output Status -->
+              <Border Grid.Row="2"
+                      BorderBrush="DarkGray"
+                      BorderThickness="1"
+                      Margin="10"
+                      Padding="10">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+
+                  <StackPanel Grid.Column="0"
+                              Orientation="Horizontal">
+                    <TextBlock Text="OUTPUT:"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Status.OutputEnabled, Converter={StaticResource BoolToOnOffConverter}}"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               Margin="10,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToForegroundConverter}}" />
+                  </StackPanel>
+
+                  <Button Grid.Column="1"
+                          Content="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonTextConverter}}"
+                          Command="{Binding ToggleOutputCommand}"
+                          Padding="15,8"
+                          FontWeight="Bold"
+                          Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonBackgroundConverter}}" />
+                </Grid>
+              </Border>
+            </Grid>
+          </Border>
+
+          <!-- Control Panel -->
+          <Border Grid.Column="1"
+                  Padding="20">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+
+              <TextBlock Grid.Row="0"
+                         Text="CONTROL PANEL"
+                         FontSize="20"
+                         FontWeight="Bold"
+                         HorizontalAlignment="Center"
+                         Margin="0,0,0,20" />
+
+              <!-- Voltage Control -->
+              <GroupBox Grid.Row="1"
+                        Header="Voltage Control"
+                        Margin="0,10,0,10"
+                        Padding="10">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+
+                  <TextBox Grid.Column="0"
+                           Width="120"
+                           Text="{Binding SetVoltage, StringFormat={}{0:F2}, UpdateSourceTrigger=PropertyChanged}"
+                           HorizontalAlignment="Left" />
+                  <TextBlock Grid.Column="1"
+                             Text="V"
+                             VerticalAlignment="Center" />
+                  <Button Grid.Column="2"
+                          Content="Set"
+                          Command="{Binding SetVoltageCommand}"
+                          Margin="10,0,0,0">
+                    <Button.Style>
+                      <Style TargetType="Button"
+                             BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding SetVoltage}"
+                                       Value="{x:Null}">
+                            <Setter Property="IsEnabled"
+                                    Value="False" />
+                          </DataTrigger>
+                          <DataTrigger Binding="{Binding IsVoltageValid}"
+                                       Value="False">
+                            <Setter Property="IsEnabled"
+                                    Value="False" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
+                </Grid>
+              </GroupBox>
+
+              <!-- Current Control -->
+              <GroupBox Grid.Row="2"
+                        Header="Current Control"
+                        Margin="0,10,0,10"
+                        Padding="10">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+
+                  <TextBox Grid.Column="0"
+                           Width="120"
+                           Text="{Binding SetCurrent, StringFormat={}{0:F2}, UpdateSourceTrigger=PropertyChanged}"
+                           HorizontalAlignment="Left" />
+                  <TextBlock Grid.Column="1"
+                             Text="A"
+                             VerticalAlignment="Center" />
+                  <Button Grid.Column="2"
+                          Content="Set"
+                          Command="{Binding SetCurrentCommand}"
+                          Margin="10,0,0,0">
+                    <Button.Style>
+                      <Style TargetType="Button"
+                             BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding SetCurrent}"
+                                       Value="{x:Null}">
+                            <Setter Property="IsEnabled"
+                                    Value="False" />
+                          </DataTrigger>
+                          <DataTrigger Binding="{Binding IsCurrentValid}"
+                                       Value="False">
+                            <Setter Property="IsEnabled"
+                                    Value="False" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
+                </Grid>
+              </GroupBox>
+
+              <!-- Protection Status -->
+              <GroupBox Grid.Row="3"
+                        Header="Protection Status"
+                        Margin="0,10,0,10"
+                        Padding="10">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+
+                  <!-- Status Indicators -->
+                  <TextBlock Grid.Row="0"
+                             Grid.Column="0"
+                             Text="OVP:"
+                             FontWeight="Bold" />
+                  <Ellipse Grid.Row="0"
+                           Grid.Column="1"
+                           Width="15"
+                           Height="15"
+                           Fill="{Binding Status.OverVoltageProtection, Converter={StaticResource BoolToProtectionBrushConverter}}"
+                           HorizontalAlignment="Left" />
+
+                  <TextBlock Grid.Row="0"
+                             Grid.Column="2"
+                             Text="OCP:"
+                             FontWeight="Bold" />
+                  <Ellipse Grid.Row="0"
+                           Grid.Column="3"
+                           Width="15"
+                           Height="15"
+                           Fill="{Binding Status.OverCurrentProtection, Converter={StaticResource BoolToProtectionBrushConverter}}"
+                           HorizontalAlignment="Left" />
+
+                  <TextBlock Grid.Row="0"
+                             Grid.Column="4"
+                             Text="OTP:"
+                             FontWeight="Bold" />
+                  <Ellipse Grid.Row="0"
+                           Grid.Column="5"
+                           Width="15"
+                           Height="15"
+                           Fill="{Binding Status.OverTemperatureProtection, Converter={StaticResource BoolToProtectionBrushConverter}}"
+                           HorizontalAlignment="Left" />
+
+                  <!-- OVP Controls -->
+                  <TextBlock Grid.Row="1"
+                             Grid.Column="0"
+                             Grid.ColumnSpan="2"
+                             Text="OVP Level (V):"
+                             Margin="0,10,0,0" />
+                  <Grid Grid.Row="1"
+                        Grid.Column="2"
+                        Grid.ColumnSpan="4"
+                        Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Grid.Column="0"
+                             Text="{Binding OvpLevel, StringFormat={}{0:F2}}" />
+                    <TextBlock Grid.Column="1"
+                              Text="(1-65V)"
+                              VerticalAlignment="Center"
+                              Margin="5,0" />
+                    <Button Grid.Column="2"
+                            Content="Set"
+                            Command="{Binding SetOvpCommand}" />
+                  </Grid>
+
+                  <!-- OCP Controls -->
+                  <TextBlock Grid.Row="2"
+                             Grid.Column="0"
+                             Grid.ColumnSpan="2"
+                             Text="OCP Level (A):"
+                             Margin="0,10,0,0" />
+                  <Grid Grid.Row="2"
+                        Grid.Column="2"
+                        Grid.ColumnSpan="4"
+                        Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Grid.Column="0"
+                             Text="{Binding OcpLevel, StringFormat={}{0:F2}}" />
+                    <TextBlock Grid.Column="1"
+                              Text="(1-65A)"
+                              VerticalAlignment="Center"
+                              Margin="5,0" />
+                    <Button Grid.Column="2"
+                            Content="Set"
+                            Command="{Binding SetOcpCommand}" />
+                  </Grid>
+                </Grid>
+              </GroupBox>
+
+              <!-- Additional Controls can be added here -->
+              <GroupBox Grid.Row="4"
+                        Header="Device Information"
+                        Margin="0,10,0,0"
+                        Padding="10">
+                <StackPanel>
+                  <TextBlock Text="Model: QPX1200SP"
+                             Margin="0,5" />
+                  <TextBlock Text="Max Voltage: 60V"
+                             Margin="0,5" />
+                  <TextBlock Text="Max Current: 50A"
+                             Margin="0,5" />
+                  <TextBlock Text="Max Power: 1200W"
+                             Margin="0,5" />
+                </StackPanel>
+              </GroupBox>
+           
+            
+        </Grid>
+        </Border>
+      </Grid>
+      </Grid>
+    </TabItem>
+
+    <!-- Logs Tab -->
+    <TabItem Header="Logs">
+      <View:LogView />
+    </TabItem>
+
+    <!-- Settings Tab -->
+    <TabItem Header="Settings">
+      <View:Settings />
+    </TabItem>
+
+    
+  </TabControl>
+
+</Window>
