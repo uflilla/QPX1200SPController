@@ -524,7 +524,7 @@
     </TabItem>
 
     <!-- Logs Tab -->
-    <TabItem Header="Logs">
+    <TabItem Header="Data Logs">
       <View:LogView />
     </TabItem>
 
@@ -533,7 +533,8 @@
       <View:Settings />
     </TabItem>
 
-    
-  </TabControl>
-
+    <TabItem Header="App Logs">
+      <View:AppLogsView />
+    </TabItem>
+    </TabControl>
 </Window>

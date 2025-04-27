@@ -30,9 +30,10 @@ namespace QPX1200SPController.Services
                 string response = await SendCommandAsync("*IDN?");
                 return response.Contains("QPX1200SP");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 Disconnect();
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(ConnectAsync));
                 return false;
             }
         }
@@ -48,54 +49,52 @@ namespace QPX1200SPController.Services
         public async Task<string> SendCommandAsync(string command)
         {
             if (!IsConnected)
-                throw new InvalidOperationException("Not connected to power supply");
-
-            byte[] data = Encoding.ASCII.GetBytes(command + "\n");
-            await stream.WriteAsync(data, 0, data.Length);
-
-            // If command is a query (ends with ?), read response
-            if (command.TrimEnd().EndsWith("?"))
             {
-                // Extract the command prefix for verification (e.g., "V1" from "V1?") 
-                string commandPrefix = ExtractCommandPrefix(command);
-                
-                byte[] buffer = new byte[1024];
-                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                string response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
-                
-                // Add retry logic for potentially incomplete or incorrect responses
-                int retryCount = 0;
-                const int maxRetries = 3;
-                
-                while (retryCount < maxRetries && !IsValidResponseForCommand(response, commandPrefix))
-                {
-                    // Wait a bit before retrying
-                    await Task.Delay(100);
-                    
-                    // Clear any pending data
-                    if (stream.DataAvailable)
-                    {
-                        buffer = new byte[1024];
-                        await stream.ReadAsync(buffer, 0, buffer.Length);
-                    }
-                    
-                    // Resend the command
-                    await stream.WriteAsync(data, 0, data.Length);
-                    
-                    // Read the response again
-                    buffer = new byte[1024];
-                    bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
-                    
-                    retryCount++;
-                }
-                
-                return response;
+                var ex = new InvalidOperationException("Not connected to power supply");
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
+                return string.Empty;
             }
 
-            return string.Empty;
+            try
+            {
+                byte[] data = Encoding.ASCII.GetBytes(command + "\n");
+                await stream.WriteAsync(data, 0, data.Length);
+
+                // If command is a query (ends with ?), read response
+                if (command.TrimEnd().EndsWith("?"))
+                {
+                    // Extract the command prefix for verification (e.g., "V1" from "V1?") 
+                    string commandPrefix = ExtractCommandPrefix(command);
+                    byte[] buffer = new byte[1024];
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                    string response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
+                    int retryCount = 0;
+                    const int maxRetries = 3;
+                    while (retryCount < maxRetries && !IsValidResponseForCommand(response, commandPrefix))
+                    {
+                        await Task.Delay(100);
+                        if (stream.DataAvailable)
+                        {
+                            buffer = new byte[1024];
+                            await stream.ReadAsync(buffer, 0, buffer.Length);
+                        }
+                        await stream.WriteAsync(data, 0, data.Length);
+                        buffer = new byte[1024];
+                        bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                        response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
+                        retryCount++;
+                    }
+                    return response;
+                }
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
+                return string.Empty;
+            }
         }
-        
+
         /// <summary>
         /// Extracts the command prefix from a query command
         /// </summary>
@@ -173,40 +172,31 @@ namespace QPX1200SPController.Services
         public async Task<PowerSupplyStatus> GetStatusAsync()
         {
             if (!IsConnected)
+            {
+                QPX1200SPController.Services.LoggingService.Instance.LogError("Disconnected", nameof(PowerSupplyService), nameof(GetStatusAsync));
                 return new PowerSupplyStatus { ConnectionStatus = "Disconnected" };
-
+            }
             try
             {
                 var status = new PowerSupplyStatus();
-
-                // Get voltage
                 string voltageStr = await SendCommandAsync("V1?");
                 status.Voltage = ParseResponseValue(voltageStr, "V1");
-
-                // Get current
                 string currentStr = await SendCommandAsync("I1?");
                 status.Current = ParseResponseValue(currentStr, "I1");
-
-                // Calculate power
                 status.Power = status.Voltage * status.Current;
-
-                // Get output state
                 string outputStr = await SendCommandAsync("OP1?");
                 status.OutputEnabled = outputStr.Trim() == "1";
-
-                // Get protection values
                 string ovpStr = await SendCommandAsync("OVP1?");
                 status.OverVoltageProtection = ParseResponseValue(ovpStr, "OVP1");
-
                 string ocpStr = await SendCommandAsync("OCP1?");
                 status.OverCurrentProtection = ParseResponseValue(ocpStr, "OCP1");
-
                 status.ConnectionStatus = "Connected";
                 return status;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 Disconnect();
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(GetStatusAsync));
                 return new PowerSupplyStatus { ConnectionStatus = "Error" };
             }
         }
@@ -274,124 +264,105 @@ namespace QPX1200SPController.Services
         /// <returns>The parsed double value</returns>
         private double ParseResponseValue(string response, string expectedPrefix)
         {
-            if (string.IsNullOrWhiteSpace(response))
-                throw new InvalidOperationException("Empty response from power supply");
-
-            // Trim any whitespace
-            response = response.Trim();
-            
-            // Handle specific response formats based on the command prefix
-            switch (expectedPrefix)
+            try
             {
-                case "V1":
-                    // Format: V1 <NR2><RMT> where <NR2> is in Volts
-                    if (response.StartsWith("V1 ", StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(response))
+                    throw new InvalidOperationException("Empty response from power supply");
+                response = response.Trim();
+                switch (expectedPrefix)
+                {
+                    case "V1":
+                        if (response.StartsWith("V1 ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string numericPart = response.Substring(3).Trim();
+                            if (double.TryParse(numericPart, out double result))
+                                return result;
+                        }
+                        break;
+                    case "I1":
+                        if (response.StartsWith("I1 ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string numericPart = response.Substring(3).Trim();
+                            if (double.TryParse(numericPart, out double result))
+                                return result;
+                        }
+                        break;
+                    case "OVP1":
+                        if (response.StartsWith("VP1 ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string numericPart = response.Substring(4).Trim();
+                            if (double.TryParse(numericPart, out double result))
+                                return result;
+                        }
+                        break;
+                    case "OCP1":
+                        if (response.StartsWith("CP1 ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string numericPart = response.Substring(4).Trim();
+                            if (double.TryParse(numericPart, out double result))
+                                return result;
+                        }
+                        break;
+                    case "V1O":
+                        if (response.EndsWith("V", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string numericPart = response.Substring(0, response.Length - 1).Trim();
+                            if (double.TryParse(numericPart, out double result))
+                                return result;
+                        }
+                        break;
+                    case "I1O":
+                        if (response.EndsWith("A", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string numericPart = response.Substring(0, response.Length - 1).Trim();
+                            if (double.TryParse(numericPart, out double result))
+                                return result;
+                        }
+                        break;
+                }
+                string genericNumericPart = "";
+                bool decimalPointFound = false;
+                if (response.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
+                    response.StartsWith(expectedPrefix.Replace("1", "P1"), StringComparison.OrdinalIgnoreCase))
+                {
+                    int prefixEndIndex = response.IndexOf(' ');
+                    if (prefixEndIndex > 0 && prefixEndIndex < response.Length - 1)
                     {
-                        string numericPart = response.Substring(3).Trim();
-                        if (double.TryParse(numericPart, out double result))
-                            return result;
+                        response = response.Substring(prefixEndIndex).Trim();
                     }
-                    break;
-                    
-                case "I1":
-                    // Format: I1 <NR2><RMT> where <NR2> is in Amps
-                    if (response.StartsWith("I1 ", StringComparison.OrdinalIgnoreCase))
+                }
+                foreach (char c in response)
+                {
+                    if (char.IsDigit(c))
                     {
-                        string numericPart = response.Substring(3).Trim();
-                        if (double.TryParse(numericPart, out double result))
-                            return result;
+                        genericNumericPart += c;
                     }
-                    break;
-                    
-                case "OVP1":
-                    // Format: VP1 <NR2><RMT> where <NR2> is in Volts
-                    if (response.StartsWith("VP1 ", StringComparison.OrdinalIgnoreCase))
+                    else if (c == '.' && !decimalPointFound)
                     {
-                        string numericPart = response.Substring(4).Trim();
-                        if (double.TryParse(numericPart, out double result))
-                            return result;
+                        genericNumericPart += c;
+                        decimalPointFound = true;
                     }
-                    break;
-                    
-                case "OCP1":
-                    // Format: CP1 <NR2><RMT> where <NR2> is in Amps
-                    if (response.StartsWith("CP1 ", StringComparison.OrdinalIgnoreCase))
+                    else if ((c == '-' || c == '+') && genericNumericPart.Length == 0)
                     {
-                        string numericPart = response.Substring(4).Trim();
-                        if (double.TryParse(numericPart, out double result))
-                            return result;
+                        genericNumericPart += c;
                     }
-                    break;
-                    
-                case "V1O":
-                    // Format: <NR2>V<RMT> where <NR2> is in Volts
-                    if (response.EndsWith("V", StringComparison.OrdinalIgnoreCase))
+                    else if (char.IsLetter(c) || c == 'V' || c == 'A')
                     {
-                        string numericPart = response.Substring(0, response.Length - 1).Trim();
-                        if (double.TryParse(numericPart, out double result))
-                            return result;
+                        break;
                     }
-                    break;
-                    
-                case "I1O":
-                    // Format: <NR2>A<RMT> where <NR2> is in Amps
-                    if (response.EndsWith("A", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string numericPart = response.Substring(0, response.Length - 1).Trim();
-                        if (double.TryParse(numericPart, out double result))
-                            return result;
-                    }
-                    break;
+                }
+                if (string.IsNullOrWhiteSpace(genericNumericPart))
+                    throw new FormatException($"Could not extract numeric value from response: {response}");
+                if (double.TryParse(genericNumericPart, out double genericResult))
+                    return genericResult;
+                else
+                    throw new FormatException($"Failed to parse numeric value: {genericNumericPart} from response: {response}");
             }
-            
-            // Fallback to generic parsing for other commands or if specific parsing failed
-            // Remove any units (V, A, etc.) and other non-numeric characters
-            string genericNumericPart = "";
-            bool decimalPointFound = false;
-
-            // Check if the response contains the expected prefix
-            // Some responses might be prefixed with the command
-            if (response.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
-                response.StartsWith(expectedPrefix.Replace("1", "P1"), StringComparison.OrdinalIgnoreCase))
+            catch (Exception ex)
             {
-                // Extract the part after the prefix
-                int prefixEndIndex = response.IndexOf(' ');
-                if (prefixEndIndex > 0 && prefixEndIndex < response.Length - 1)
-                {
-                    response = response.Substring(prefixEndIndex).Trim();
-                }
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(ParseResponseValue));
+                return 0.0;
             }
-
-            foreach (char c in response)
-            {
-                if (char.IsDigit(c))
-                {
-                    genericNumericPart += c;
-                }
-                else if (c == '.' && !decimalPointFound)
-                {
-                    genericNumericPart += c;
-                    decimalPointFound = true;
-                }
-                else if ((c == '-' || c == '+') && genericNumericPart.Length == 0)
-                {
-                    // Allow negative or positive sign at the beginning
-                    genericNumericPart += c;
-                }
-                else if (char.IsLetter(c) || c == 'V' || c == 'A')
-                {
-                    // Stop parsing when we hit a letter (likely a unit)
-                    break;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(genericNumericPart))
-                throw new FormatException($"Could not extract numeric value from response: {response}");
-
-            if (double.TryParse(genericNumericPart, out double genericResult))
-                return genericResult;
-            else
-                throw new FormatException($"Failed to parse numeric value: {genericNumericPart} from response: {response}");
         }
     }
 }

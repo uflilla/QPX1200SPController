@@ -122,6 +122,12 @@
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <Reference Include="Wpf.Ui, Version=4.0.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
+      <HintPath>..\packages\WPF-UI.4.0.2\lib\net481\Wpf.Ui.dll</HintPath>
+    </Reference>
+    <Reference Include="Wpf.Ui.Abstractions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
+      <HintPath>..\packages\WPF-UI.Abstractions.4.0.2\lib\net472\Wpf.Ui.Abstractions.dll</HintPath>
+    </Reference>
     <Reference Include="Xceed.Wpf.AvalonDock, Version=4.7.0.0, Culture=neutral, PublicKeyToken=3e4669d2f30244f4, processorArchitecture=MSIL">
       <HintPath>..\packages\Extended.Wpf.Toolkit.4.7.25104.5739\lib\net40\Xceed.Wpf.AvalonDock.dll</HintPath>
     </Reference>
@@ -147,7 +153,9 @@
     <Compile Include="Models\LogEntry.cs" />
     <Compile Include="Models\Settings.cs" />
     <Compile Include="Services\DatabaseService.cs" />
+    <Compile Include="Services\LoggingService.cs" />
     <Compile Include="Services\PowerSupplyService.cs" />
+    <Compile Include="ViewModels\AppLogsViewModel.cs" />
     <Compile Include="ViewModels\DataRetrievalViewModel.cs" />
     <Compile Include="ViewModels\LogViewModel.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />
@@ -155,6 +163,9 @@
     <Compile Include="ViewModels\SettingsViewModel.cs" />
     <Compile Include="ViewModels\ViewModelBase.cs" />
     <Compile Include="ViewModels\ViewModelLocator.cs" />
+    <Compile Include="Views\AppLogsView.xaml.cs">
+      <DependentUpon>AppLogsView.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Views\DataRetrievalView.xaml.cs">
       <DependentUpon>DataRetrievalView.xaml</DependentUpon>
     </Compile>
@@ -176,6 +187,10 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Views\AppLogsView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Views\DataRetrievalView.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
