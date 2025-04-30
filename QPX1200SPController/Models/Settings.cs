@@ -10,14 +10,15 @@ namespace QPX1200SPController.Models
         private static readonly string SettingsFilePath = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "settings.xml");
 
-        public double MinVoltage { get; set; } = 0.0;
-        public double MaxVoltage { get; set; } = 60.0;
-        public double MinCurrent { get; set; } = 0.0;
-        public double MaxCurrent { get; set; } = 50.0;
-        public double OverVoltageProtectionLevel { get; set; } = 65.0;
-        public double OverCurrentProtectionLevel { get; set; } = 55.0;
-        // Removed boolean flags as OVP and OCP are now treated as numeric values (1-65)
-        // Values > 0 indicate protection is active, with the value being the threshold
+        public double MinVoltage { get; set; } 
+        public double MaxVoltage { get; set; } 
+        public double MinCurrent { get; set; }
+        public double MaxCurrent { get; set; } 
+        [XmlIgnore] public double MinOvpLevel => 0;
+        [XmlIgnore] public double MaxOvpLevel => 61;
+        [XmlIgnore] public double MinOcpLevel => 0;
+        [XmlIgnore] public double MaxOcpLevel => 50;
+        
 
         public static Settings Load()
         {
@@ -32,6 +33,7 @@ namespace QPX1200SPController.Models
                 {
                     var serializer = new XmlSerializer(typeof(Settings));
                     return (Settings)serializer.Deserialize(stream);
+                    
                 }
             }
             catch (Exception)

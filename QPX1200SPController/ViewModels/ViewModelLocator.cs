@@ -39,7 +39,7 @@ namespace QPX1200SPController.ViewModels
             // Register view models
             SimpleIoc.Default.Register<MainViewModel>();
             SimpleIoc.Default.Register<SettingsViewModel>();
-            SimpleIoc.Default.Register<LogViewModel>();
+            //SimpleIoc.Default.Register<LogViewModel>();
             SimpleIoc.Default.Register<DataRetrievalViewModel>();
         }
 
@@ -59,13 +59,13 @@ namespace QPX1200SPController.ViewModels
             }
         }
 
-        public LogViewModel Log
-        {
-            get
-            {
-                return ServiceLocator.Current.GetInstance<LogViewModel>();
-            }
-        }
+        //public LogViewModel Log
+        //{
+        //    get
+        //    {
+        //        return ServiceLocator.Current.GetInstance<LogViewModel>();
+        //    }
+        //}
 
         public DataRetrievalViewModel DataRetrieval
         {

@@ -149,7 +149,9 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="Converters\Class1.cs" />
+    <Compile Include="Converters\BoolToZeroOneConverter.cs" />
+    <Compile Include="Converters\Converters.cs" />
+    <Compile Include="Models\EventStatus.cs" />
     <Compile Include="Models\LogEntry.cs" />
     <Compile Include="Models\Settings.cs" />
     <Compile Include="Services\DatabaseService.cs" />

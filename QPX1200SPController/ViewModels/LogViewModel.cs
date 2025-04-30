@@ -8,7 +8,7 @@ using QPX1200SPController.Services;
 
 namespace QPX1200SPController.ViewModels
 {
-    public class LogViewModel : ViewModelBase
+    /*public class LogViewModel : ViewModelBase
     {
         private readonly DatabaseService _databaseService;
         private DateTime _startDate = DateTime.Today.AddDays(-7);
@@ -120,5 +120,5 @@ namespace QPX1200SPController.ViewModels
                 StatusMessage = $"Error exporting to CSV: {ex.Message}";
             }
         }
-    }
+    }*/
 }

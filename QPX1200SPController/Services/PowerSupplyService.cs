@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -25,7 +27,7 @@ namespace QPX1200SPController.Services
                 client = new TcpClient();
                 await client.ConnectAsync(ipAddress, port);
                 stream = client.GetStream();
-
+                return client.Connected;
                 // Test connection with IDN query
                 string response = await SendCommandAsync("*IDN?");
                 return response.Contains("QPX1200SP");
@@ -54,6 +56,45 @@ namespace QPX1200SPController.Services
                 QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
                 return string.Empty;
             }
+            Debug.WriteLine($"command: {command}");
+            try
+            {
+                byte[] data = Encoding.ASCII.GetBytes(command + "\n");
+                await stream.WriteAsync(data, 0, data.Length);
+                var response=string.Empty;
+                // If command is a query (ends with ?), read response
+                if (command.TrimEnd().EndsWith("?"))
+                {
+                    // Extract the command prefix for verification (e.g., "V1" from "V1?") 
+                    string commandPrefix = ExtractCommandPrefix(command);
+                    byte[] buffer = new byte[1024];
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                    response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
+                    //Debug.WriteLine($"Response: {response}");
+                    //var validResponse = IsValidResponseForCommand(response, commandPrefix);
+                    //var responseValidated= validResponse ? response :string.Empty;
+                    //Debug.WriteLine($"Validated Response: {responseValidated}");
+                    //return responseValidated;
+                    return response;
+                }
+                Debug.WriteLine($"Valid Response: {response}");
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
+                return string.Empty;
+            }
+        }
+
+        /*public async Task<string> SendCommandAsync(string command)
+        {
+            if (!IsConnected)
+            {
+                var ex = new InvalidOperationException("Not connected to power supply");
+                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
+                return string.Empty;
+            }
 
             try
             {
@@ -69,11 +110,11 @@ namespace QPX1200SPController.Services
                     int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
                     string response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
                     int retryCount = 0;
-                    const int maxRetries = 3;
+                    const int maxRetries = 1;
                     while (retryCount < maxRetries && !IsValidResponseForCommand(response, commandPrefix))
                     {
                         await Task.Delay(100);
-                        if (stream.DataAvailable)
+                        if (stream?.DataAvailable ?? false)
                         {
                             buffer = new byte[1024];
                             await stream.ReadAsync(buffer, 0, buffer.Length);
@@ -93,7 +134,7 @@ namespace QPX1200SPController.Services
                 QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
                 return string.Empty;
             }
-        }
+        }*/
 
         /// <summary>
         /// Extracts the command prefix from a query command
@@ -131,8 +172,8 @@ namespace QPX1200SPController.Services
                 return false;
                 
             // For simple numeric responses, we can't verify the command
-            if (response.Length < 3)
-                return true;
+            //if (response.Length < 3)
+            //    return true;
                 
             // Special case for output state query
             if (commandPrefix == "OP1" && (response == "0" || response == "1"))
@@ -160,7 +201,9 @@ namespace QPX1200SPController.Services
                 case "I1O":
                     // I1O? returns <NR2>A format
                     return response.EndsWith("A", StringComparison.OrdinalIgnoreCase);
-                    
+                case "*IDN":
+                    // I1O? returns <NR2>A format
+                    return true;
                 default:
                     // Fallback for other commands
                     string altPrefix = commandPrefix.Replace("1", "P1");
@@ -169,36 +212,74 @@ namespace QPX1200SPController.Services
             }
         }
 
+        private bool _isGettingStatus;
         public async Task<PowerSupplyStatus> GetStatusAsync()
         {
+            
             if (!IsConnected)
             {
                 QPX1200SPController.Services.LoggingService.Instance.LogError("Disconnected", nameof(PowerSupplyService), nameof(GetStatusAsync));
                 return new PowerSupplyStatus { ConnectionStatus = "Disconnected" };
             }
+            var count = 0;
+            while (_isGettingStatus && count<20)
+            {
+                await Task.Delay(50);
+                count++;
+            }
+            if (_isGettingStatus)
+            {
+                
+                LoggingService.Instance.LogError("Already Getting status", nameof(PowerSupplyService), nameof(GetStatusAsync));
+                return new PowerSupplyStatus { ConnectionStatus = "Busy"};
+            }
             try
             {
-                var status = new PowerSupplyStatus();
-                string voltageStr = await SendCommandAsync("V1?");
-                status.Voltage = ParseResponseValue(voltageStr, "V1");
-                string currentStr = await SendCommandAsync("I1?");
-                status.Current = ParseResponseValue(currentStr, "I1");
-                status.Power = status.Voltage * status.Current;
-                string outputStr = await SendCommandAsync("OP1?");
-                status.OutputEnabled = outputStr.Trim() == "1";
-                string ovpStr = await SendCommandAsync("OVP1?");
-                status.OverVoltageProtection = ParseResponseValue(ovpStr, "OVP1");
-                string ocpStr = await SendCommandAsync("OCP1?");
-                status.OverCurrentProtection = ParseResponseValue(ocpStr, "OCP1");
-                status.ConnectionStatus = "Connected";
+                _isGettingStatus = true;
+                string statusResponse = await SendCommandAsync(PowerSupplyCommands.GetPsStatusCommand);
+                var status = ParsePsStatus(statusResponse);
+                _isGettingStatus=false;
                 return status;
             }
             catch (Exception ex)
             {
                 Disconnect();
                 QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(GetStatusAsync));
+                _isGettingStatus = false;
                 return new PowerSupplyStatus { ConnectionStatus = "Error" };
             }
+        }
+
+        private PowerSupplyStatus ParsePsStatus(string statusResponse)
+        {
+            var tcParts = PowerSupplyCommands.GetPsStatusCommand.Split(';');
+            var responseParts = statusResponse.Split('\n');
+            if (tcParts.Length != responseParts.Length) return default;
+            var status = new PowerSupplyStatus();
+
+            status.Voltage = ParseResponseValue(responseParts[0], "V1O");
+            status.Current = ParseResponseValue(responseParts[1], "I1O");
+            status.OutputEnabled = responseParts[2].Trim()=="1";
+            status.EventStatus=ParseEventStatus(responseParts[3]);
+            status.Power=status.Voltage * status.Current;
+            status.ConnectionStatus = "Connected";
+            status.Time = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+            return status;
+        }
+
+        private EventStatus ParseEventStatus(string responsePart)
+        {
+            var eventRegister= byte.Parse(responsePart);
+            var bits = Convert.ToString(eventRegister, 2).PadLeft(8,'0').Reverse().ToArray();
+            var result= new EventStatus();
+            result.ConstantVoltageMode = bits[0]=='1'? 1:0;
+            result.ConstantCurrentMode = bits[1]=='1'? 1:0;
+            result.UnregulatedMode = bits[2]=='1'? 1:0;
+            result.OverVoltageTrip = bits[3]=='1'? 1:0;
+            result.OverCurrentTrip = bits[4]=='1'? 1:0;
+            result.OutputSenseTrip = bits[5]=='1'? 1:0;
+            result.FaultTrip = bits[6]=='1'? 1:0;
+            return result;
         }
 
         public async Task SetVoltageAsync(double voltage)
@@ -245,15 +326,35 @@ namespace QPX1200SPController.Services
         public async Task<double> GetSetVoltageAsync()
         {
             // V1O? queries the set voltage value from the power supply
-            string voltage = await SendCommandAsync("V1O?");
-            return ParseResponseValue(voltage, "V1O");
+            string voltage = await SendCommandAsync("V1?");
+            return ParseResponseValue(voltage, "V1");
+        }
+
+        public async Task<PowerSupplySettingStatus> GetPowerSupplySettingsAsync()
+        {
+            var settings = await SendCommandAsync(PowerSupplyCommands.GetPsSettingStatusCommand);
+            return ParsePsSettingStatus(settings);
+        }
+
+        private PowerSupplySettingStatus ParsePsSettingStatus(string settings)
+        {
+            var tcParts = PowerSupplyCommands.GetPsSettingStatusCommand.Split(';');
+            var responseParts = settings.Split('\n');
+            if (tcParts.Length != responseParts.Length) return default;
+            var status = new PowerSupplySettingStatus();
+
+            status.SetVoltage = ParseResponseValue(responseParts[0], "V1");
+            status.SetCurrent = ParseResponseValue(responseParts[1], "I1");
+            status.SetOvpLevel = ParseResponseValue(responseParts[2], "VP1");
+            status.SetOcpLevel = ParseResponseValue(responseParts[3], "CP1");
+            return status;
         }
 
         public async Task<double> GetSetCurrentAsync()
         {
             // I1O? queries the set current value from the power supply
-            string current = await SendCommandAsync("I1O?");
-            return ParseResponseValue(current, "I1O");
+            string current = await SendCommandAsync("I1?");
+            return ParseResponseValue(current, "I1");
         }
         /// <summary>
         /// Parses a response value from the power supply, handling various formats

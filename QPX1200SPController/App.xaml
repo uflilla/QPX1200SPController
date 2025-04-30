@@ -1,26 +1,26 @@
 <Application
-  x:Class="QPX1200SPController.App"
-  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-  xmlns:converters="clr-namespace:QPX1200SPController.Converters"
-  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-  xmlns:d1p1="http://schemas.openxmlformats.org/markup-compatibility/2006"
-  xmlns:local="clr-namespace:QPX1200SPController"
-  d1p1:Ignorable="d">
-  <Application.Resources>
-    <ResourceDictionary>
-      <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-      <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
-      <converters:BoolToOnOffConverter x:Key="BoolToOnOffConverter" />
-      <converters:OutputEnabledToBrushConverter x:Key="OutputEnabledToBrushConverter" />
-      <converters:OutputEnabledToForegroundConverter x:Key="OutputEnabledToForegroundConverter" />
-      <converters:OutputButtonTextConverter x:Key="OutputButtonTextConverter" />
-      <converters:OutputButtonBackgroundConverter x:Key="OutputButtonBackgroundConverter" />
-      <converters:BoolToProtectionBrushConverter x:Key="BoolToProtectionBrushConverter" />
-      <vm:ViewModelLocator
-        xmlns:vm="clr-namespace:QPX1200SPController.ViewModels"
-        x:Key="Locator"
-        d:IsDataSource="True" />
-    </ResourceDictionary>
-  </Application.Resources>
+    x:Class="QPX1200SPController.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="clr-namespace:QPX1200SPController.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:d1p1="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="clr-namespace:QPX1200SPController"
+    d1p1:Ignorable="d">
+    <Application.Resources>
+        <ResourceDictionary>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <converters:BoolToOnOffConverter x:Key="BoolToOnOffConverter" />
+            <converters:OutputEnabledToBrushConverter x:Key="OutputEnabledToBrushConverter" />
+            <converters:OutputEnabledToForegroundConverter x:Key="OutputEnabledToForegroundConverter" />
+            <converters:OutputButtonTextConverter x:Key="OutputButtonTextConverter" />
+            <converters:OutputButtonBackgroundConverter x:Key="OutputButtonBackgroundConverter" />
+            <converters:BoolToProtectionBrushConverter x:Key="BoolToProtectionBrushConverter" />
+            <vm:ViewModelLocator
+                xmlns:vm="clr-namespace:QPX1200SPController.ViewModels"
+                x:Key="Locator"
+                d:IsDataSource="True" />
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

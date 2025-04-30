@@ -6,6 +6,7 @@ using System.Windows.Input;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
+using QPX1200SPController.Converters;
 using QPX1200SPController.Models;
 using QPX1200SPController.Services;
 
@@ -16,7 +17,7 @@ namespace QPX1200SPController.ViewModels
         private readonly DatabaseService _databaseService;
         private DateTime _startDate = DateTime.Today.AddDays(-7);
         private DateTime _endDate = DateTime.Now;
-        private ObservableCollection<LogEntry> _logs;
+        //private ObservableCollection<LogEntry> _logs;
         private bool _isLoading;
         private string _statusMessage;
 
@@ -32,11 +33,7 @@ namespace QPX1200SPController.ViewModels
             set => SetProperty(ref _endDate, value);
         }
 
-        public ObservableCollection<LogEntry> Logs
-        {
-            get => _logs;
-            set => SetProperty(ref _logs, value);
-        }
+        public ObservableCollection<LogEntry> Logs { get; set; }
 
         public bool IsLoading
         {
@@ -52,14 +49,15 @@ namespace QPX1200SPController.ViewModels
 
         public ICommand LoadDataCommand { get; }
         public ICommand ExportToCsvCommand { get; }
-
+        private CsvConfiguration _csvConfiguration;
         public DataRetrievalViewModel(DatabaseService databaseService)
         {
             _databaseService = databaseService;
             Logs = new ObservableCollection<LogEntry>();
 
-            LoadDataCommand = new RelayCommand(async _ => await LoadData());
+            LoadDataCommand = new RelayCommand(async _ => await LoadData(),_=>EndDate>StartDate);
             ExportToCsvCommand = new RelayCommand(async _ => await ExportToCsv(), _ => Logs.Count > 0);
+            _csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture) { };
         }
 
         private async Task LoadData()
@@ -89,6 +87,7 @@ namespace QPX1200SPController.ViewModels
             }
         }
 
+        
         private async Task ExportToCsv()
         {
             try
@@ -107,8 +106,9 @@ namespace QPX1200SPController.ViewModels
                     await Task.Run(() =>
                     {
                         using (var writer = new StreamWriter(saveFileDialog.FileName))
-                        using (var csv = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)))
+                        using (var csv = new CsvWriter(writer, _csvConfiguration))
                         {
+                            csv.Context.TypeConverterCache.AddConverter<bool>(new BoolToZeroOneConverter());
                             csv.WriteRecords(Logs);
                         }
                     });
@@ -118,7 +118,8 @@ namespace QPX1200SPController.ViewModels
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error exporting data: {ex.Message}";
+                StatusMessage = $"Error exporting data: see app logs for details";
+                LoggingService.Instance.LogException(ex,nameof(DataRetrievalViewModel),nameof(ExportToCsv));
             }
         }
     }

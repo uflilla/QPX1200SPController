@@ -111,10 +111,7 @@
           Width="50"
           Binding="{Binding OverCurrentProtection}"
           Header="OCP" />
-        <DataGridCheckBoxColumn
-          Width="50"
-          Binding="{Binding OverTemperatureProtection}"
-          Header="OTP" />
+        
       </DataGrid.Columns>
     </DataGrid>
 

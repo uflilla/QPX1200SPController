@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using GalaSoft.MvvmLight.Ioc;
 using QPX1200SPController.Models;
 
 namespace QPX1200SPController.ViewModels
@@ -10,48 +11,43 @@ namespace QPX1200SPController.ViewModels
         private double _maxVoltage;
         private double _minCurrent;
         private double _maxCurrent;
-        private double _ovpLevel;
-        private double _ocpLevel;
+        
         // Removed boolean flags as OVP and OCP are now treated as numeric values (1-65)
 
         public double MinVoltage
         {
             get => _minVoltage;
-            set => SetProperty(ref _minVoltage, value);
+            set
+            {
+                SetProperty(ref _minVoltage, value); 
+                RefreshComputedProperties();
+            }
         }
 
         public double MaxVoltage
         {
             get => _maxVoltage;
-            set => SetProperty(ref _maxVoltage, value);
+            set { SetProperty(ref _maxVoltage, value); RefreshComputedProperties();}
         }
 
         public double MinCurrent
         {
             get => _minCurrent;
-            set => SetProperty(ref _minCurrent, value);
+            set { SetProperty(ref _minCurrent, value); RefreshComputedProperties();}
         }
 
         public double MaxCurrent
         {
             get => _maxCurrent;
-            set => SetProperty(ref _maxCurrent, value);
+            set { SetProperty(ref _maxCurrent, value); RefreshComputedProperties();}
         }
 
-        public double OverVoltageProtectionLevel
-        {
-            get => _ovpLevel;
-            set => SetProperty(ref _ovpLevel, value);
-        }
+        public double MinOvpLevel => _settings.MinOvpLevel;
+        public double MaxOvpLevel => _settings.MaxOvpLevel;
 
-        public double OverCurrentProtectionLevel
-        {
-            get => _ocpLevel;
-            set => SetProperty(ref _ocpLevel, value);
-        }
+        public double MinOcpLevel => _settings.MinOcpLevel;
+        public double MaxOcpLevel => _settings.MaxOcpLevel;
 
-        // Removed boolean properties for OVP and OCP as they are now treated as numeric values (1-65)
-        // Values > 0 indicate protection is active, with the value being the threshold
 
         public ICommand SaveCommand { get; }
 
@@ -65,11 +61,18 @@ namespace QPX1200SPController.ViewModels
             MaxVoltage = _settings.MaxVoltage;
             MinCurrent = _settings.MinCurrent;
             MaxCurrent = _settings.MaxCurrent;
-            OverVoltageProtectionLevel = _settings.OverVoltageProtectionLevel;
-            OverCurrentProtectionLevel = _settings.OverCurrentProtectionLevel;
-
+            RefreshComputedProperties();
+            SimpleIoc.Default.GetInstance<MainViewModel>().SettingsUpdated(_settings);
             // Create save command
             SaveCommand = new RelayCommand(_ => SaveSettings());
+        }
+
+        private void RefreshComputedProperties()
+        {
+            RaisePropertyChanged(nameof(MinOvpLevel));
+            RaisePropertyChanged(nameof(MaxOvpLevel));
+            RaisePropertyChanged(nameof(MinOcpLevel));
+            RaisePropertyChanged(nameof(MaxOcpLevel));
         }
 
         private void SaveSettings()
@@ -79,12 +82,12 @@ namespace QPX1200SPController.ViewModels
             _settings.MaxVoltage = MaxVoltage;
             _settings.MinCurrent = MinCurrent;
             _settings.MaxCurrent = MaxCurrent;
-            _settings.OverVoltageProtectionLevel = OverVoltageProtectionLevel;
-            _settings.OverCurrentProtectionLevel = OverCurrentProtectionLevel;
+            RefreshComputedProperties();
             // Removed references to boolean properties as OVP and OCP are now treated as numeric values
 
             // Save to file
             _settings.Save();
+            SimpleIoc.Default.GetInstance<MainViewModel>().SettingsUpdated(_settings);
         }
     }
 }

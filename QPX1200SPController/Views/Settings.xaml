@@ -1,177 +1,169 @@
 <UserControl
-  x:Class="QPX1200SPController.Views.Settings"
-  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-  xmlns:local="clr-namespace:QPX1200SPController.Views"
-  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-  d:DesignHeight="450"
-  d:DesignWidth="800"
-  DataContext="{Binding Settings, Source={StaticResource Locator}}"
-  mc:Ignorable="d">
-  <Grid Margin="20">
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" />
-    </Grid.RowDefinitions>
-
-    <TextBlock
-      Grid.Row="0"
-      Margin="0,0,0,20"
-      HorizontalAlignment="Center"
-      FontSize="20"
-      FontWeight="Bold"
-      Text="SETTINGS" />
-
-    <!--  Voltage Limits  -->
-    <GroupBox
-      Grid.Row="1"
-      Margin="0,10,0,10"
-      Padding="10"
-      Header="Voltage Limits">
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+    x:Class="QPX1200SPController.Views.Settings"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:QPX1200SPController.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    DataContext="{Binding Settings, Source={StaticResource Locator}}"
+    mc:Ignorable="d">
+    <Grid
+        MinWidth="500"
+        Margin="20"
+        HorizontalAlignment="Center">
         <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <TextBlock
-          Grid.Row="0"
-          Grid.Column="0"
-          Text="Min Voltage:" />
-        <TextBox
-          Grid.Row="0"
-          Grid.Column="1"
-          Margin="5,5,20,5"
-          Text="{Binding MinVoltage, StringFormat={}{0:F2}}" />
+            Grid.Row="0"
+            Margin="0,0,0,10"
+            HorizontalAlignment="Center"
+            FontSize="20"
+            FontWeight="Bold"
+            Text="SETTINGS" />
 
-        <TextBlock
-          Grid.Row="0"
-          Grid.Column="2"
-          Text="Max Voltage:" />
-        <TextBox
-          Grid.Row="0"
-          Grid.Column="3"
-          Text="{Binding MaxVoltage, StringFormat={}{0:F2}}" />
-      </Grid>
-    </GroupBox>
+        <!--  Voltage Limits  -->
+        <GroupBox
+            Grid.Row="1"
+            Margin="0,5,0,5"
+            Padding="10"
+            Header="Voltage Limits">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-    <!--  Current Limits  -->
-    <GroupBox
-      Grid.Row="2"
-      Margin="0,10,0,10"
-      Padding="10"
-      Header="Current Limits">
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Text="Min Voltage:" />
+                <TextBox
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    Margin="5,5,20,5"
+                    Text="{Binding MinVoltage, StringFormat={}{0:F2}}" />
 
-        <TextBlock
-          Grid.Row="0"
-          Grid.Column="0"
-          Text="Min Current:" />
-        <TextBox
-          Grid.Row="0"
-          Grid.Column="1"
-          Margin="5,5,20,5"
-          Text="{Binding MinCurrent, StringFormat={}{0:F2}}" />
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="2"
+                    Text="Max Voltage:" />
+                <TextBox
+                    Grid.Row="0"
+                    Grid.Column="3"
+                    Text="{Binding MaxVoltage, StringFormat={}{0:F2}}" />
+            </Grid>
+        </GroupBox>
 
-        <TextBlock
-          Grid.Row="0"
-          Grid.Column="2"
-          Text="Max Current:" />
-        <TextBox
-          Grid.Row="0"
-          Grid.Column="3"
-          Text="{Binding MaxCurrent, StringFormat={}{0:F2}}" />
-      </Grid>
-    </GroupBox>
+        <!--  Current Limits  -->
+        <GroupBox
+            Grid.Row="2"
+            Margin="0,5,0,5"
+            Padding="10"
+            Header="Current Limits">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-    <!--  Protection Settings  -->
-    <GroupBox
-      Grid.Row="3"
-      Margin="0,10,0,10"
-      Padding="10"
-      Header="Protection Settings">
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Text="Min Current:" />
+                <TextBox
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    Margin="5,5,20,5"
+                    Text="{Binding MinCurrent, StringFormat={}{0:F2}}" />
 
-        <!--  OVP Settings  -->
-        <TextBlock
-          Grid.Row="0"
-          Grid.Column="0"
-          Text="OVP Level (V):" />
-        <TextBox
-          Grid.Row="0"
-          Grid.Column="1"
-          Margin="5,5,20,5"
-          Text="{Binding OverVoltageProtectionLevel, StringFormat={}{0:F2}}" />
-        <TextBlock
-          Grid.Row="0"
-          Grid.Column="2"
-          Text="Range:" />
-        <TextBlock
-          Grid.Row="0"
-          Grid.Column="3"
-          VerticalAlignment="Center"
-          Text="1-65V" />
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="2"
+                    Text="Max Current:" />
+                <TextBox
+                    Grid.Row="0"
+                    Grid.Column="3"
+                    Text="{Binding MaxCurrent, StringFormat={}{0:F2}}" />
+            </Grid>
+        </GroupBox>
 
-        <!--  OCP Settings  -->
-        <TextBlock
-          Grid.Row="1"
-          Grid.Column="0"
-          Text="OCP Level (A):" />
-        <TextBox
-          Grid.Row="1"
-          Grid.Column="1"
-          Margin="5,5,20,5"
-          Text="{Binding OverCurrentProtectionLevel, StringFormat={}{0:F2}}" />
-        <TextBlock
-          Grid.Row="1"
-          Grid.Column="2"
-          Text="Range:" />
-        <TextBlock
-          Grid.Row="1"
-          Grid.Column="3"
-          VerticalAlignment="Center"
-          Text="1-65A" />
-      </Grid>
-    </GroupBox>
+        <!--  Protection Settings  -->
+        <GroupBox
+            Grid.Row="3"
+            Margin="0,10,0,10"
+            Padding="10"
+            Header="Protection Limits">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-    <!--  Save Button  -->
-    <Button
-      Grid.Row="4"
-      Margin="0,20,0,0"
-      Padding="15,8"
-      HorizontalAlignment="Right"
-      Command="{Binding SaveCommand}"
-      Content="Save Settings" />
-  </Grid>
+                <!--  OVP Settings  -->
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Text="OVP Range (V):" />
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    Margin="5,5,20,5">
+                    <Run Text="{Binding MinOvpLevel, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                    <Run Text=" - " />
+                    <Run Text="{Binding MaxOvpLevel, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                </TextBlock>
+
+
+                <!--  OCP Settings  -->
+                <TextBlock
+                    Grid.Row="1"
+                    Grid.Column="0"
+                    Text="OCP Range (A):" />
+                <TextBlock
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    Margin="5,5,20,5">
+                    <Run Text="{Binding MinOcpLevel, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                    <Run Text=" - " />
+                    <Run Text="{Binding MaxOcpLevel, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                </TextBlock>
+            </Grid>
+        </GroupBox>
+
+        <!--  Save Button  -->
+        <Button
+            Grid.Row="4"
+            Margin="0,20,0,0"
+            Padding="15,8"
+            HorizontalAlignment="Right"
+            Command="{Binding SaveCommand}"
+            Content="Save Settings" />
+    </Grid>
 </UserControl>

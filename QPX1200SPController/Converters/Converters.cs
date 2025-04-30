@@ -62,7 +62,7 @@ namespace QPX1200SPController.Converters
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            return (bool)value ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Red);
+            return (bool)value ? new SolidColorBrush(Colors.ForestGreen) : new SolidColorBrush(Colors.Red);
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -88,7 +88,7 @@ namespace QPX1200SPController.Converters
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            return (bool)value ? new SolidColorBrush(Colors.Red) : new SolidColorBrush(Colors.Green);
+            return (bool)value ? new SolidColorBrush(Colors.Tomato) : new SolidColorBrush(Colors.Green);
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -103,9 +103,9 @@ namespace QPX1200SPController.Converters
         {
             // Now handling numeric values instead of boolean
             // If value is greater than 0, protection is active
-            if (value is double doubleValue)
+            if (value is int doubleValue)
             {
-                return doubleValue > 0 ? new SolidColorBrush(Colors.Green) : new SolidColorBrush(Colors.Gray);
+                return doubleValue > 0 ? new SolidColorBrush(Colors.OrangeRed) : new SolidColorBrush(Colors.Gray);
             }
             return new SolidColorBrush(Colors.Gray);
         }

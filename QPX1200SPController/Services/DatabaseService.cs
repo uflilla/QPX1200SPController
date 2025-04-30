@@ -37,10 +37,13 @@ namespace QPX1200SPController.Services
                             Timestamp TEXT NOT NULL,
                             Voltage REAL NOT NULL,
                             Current REAL NOT NULL,
-                            Power REAL NOT NULL,
                             OutputEnabled INTEGER NOT NULL,
-                            OverVoltageProtection REAL NOT NULL,
-                            OverCurrentProtection REAL NOT NULL
+                            CvMode INTEGER NOT NULL,
+                            CcMode INTEGER NOT NULL,
+                            UnregulatedMode INTEGER NOT NULL,
+                            OvpTrip INTEGER NOT NULL,
+                            OcpTrip INTEGER NOT NULL
+                            
                         );
                     ";
                     
@@ -62,25 +65,27 @@ namespace QPX1200SPController.Services
                     
                     string insertSql = @"
                         INSERT INTO PowerLogs (
-                            Timestamp, Voltage, Current, Power, 
-                            OutputEnabled, OverVoltageProtection, 
-                            OverCurrentProtection
+                            Timestamp, Voltage, Current,  
+                            OutputEnabled, CvMode, 
+                            CcMode,UnregulatedMode,OvpTrip,OcpTrip
                         ) VALUES (
-                            @Timestamp, @Voltage, @Current, @Power, 
-                            @OutputEnabled, @OverVoltageProtection, 
-                            @OverCurrentProtection
+                            @Timestamp, @Voltage, @Current,
+                            @OutputEnabled, @CvMode, 
+                            @CcMode,@UnregulatedMode,@OvpTrip,@OcpTrip
                         );
                     ";
                     
                     using (var command = new SQLiteCommand(insertSql, connection))
                     {
-                        command.Parameters.AddWithValue("@Timestamp", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        command.Parameters.AddWithValue("@Timestamp", status.Time);
                         command.Parameters.AddWithValue("@Voltage", status.Voltage);
                         command.Parameters.AddWithValue("@Current", status.Current);
-                        command.Parameters.AddWithValue("@Power", status.Power);
                         command.Parameters.AddWithValue("@OutputEnabled", status.OutputEnabled ? 1 : 0);
-                        command.Parameters.AddWithValue("@OverVoltageProtection", status.OverVoltageProtection);
-                        command.Parameters.AddWithValue("@OverCurrentProtection", status.OverCurrentProtection);
+                        command.Parameters.AddWithValue("@CvMode", status.EventStatus.ConstantVoltageMode);
+                        command.Parameters.AddWithValue("@CcMode", status.EventStatus.ConstantCurrentMode);
+                        command.Parameters.AddWithValue("@UnregulatedMode", status.EventStatus.UnregulatedMode);
+                        command.Parameters.AddWithValue("@OvpTrip", status.EventStatus.OverVoltageTrip);
+                        command.Parameters.AddWithValue("@OcpTrip", status.EventStatus.OverCurrentTrip);
                         
                         command.ExecuteNonQuery();
                     }
@@ -115,14 +120,17 @@ namespace QPX1200SPController.Services
                             {
                                 logs.Add(new LogEntry
                                 {
-                                    Id = Convert.ToInt32(reader["Id"]),
+                                    //Id = Convert.ToInt32(reader["Id"]),
                                     Timestamp = DateTime.Parse(reader["Timestamp"].ToString()),
                                     Voltage = Convert.ToDouble(reader["Voltage"]),
                                     Current = Convert.ToDouble(reader["Current"]),
-                                    Power = Convert.ToDouble(reader["Power"]),
                                     OutputEnabled = Convert.ToInt32(reader["OutputEnabled"]) == 1,
-                                    OverVoltageProtection = Convert.ToDouble(reader["OverVoltageProtection"]),
-                                    OverCurrentProtection = Convert.ToDouble(reader["OverCurrentProtection"])
+                                    CvMode = Convert.ToInt32(reader["CvMode"]) == 1,
+                                    CcMode = Convert.ToInt32(reader["CcMode"]) == 1,
+                                    UnregulatedMode = Convert.ToInt32(reader["UnregulatedMode"]) == 1,
+                                    OvpTrip = Convert.ToInt32(reader["OvpTrip"]) == 1,
+                                    OcpTrip = Convert.ToInt32(reader["OcpTrip"]) == 1,
+                                    
                                 });
                             }
                         }
@@ -142,14 +150,14 @@ namespace QPX1200SPController.Services
                     using (var writer = new StreamWriter(filePath))
                     {
                         // Write header
-                        writer.WriteLine("Timestamp,Voltage,Current,Power,OutputEnabled,OverVoltageProtection,OverCurrentProtection");
+                        writer.WriteLine("Timestamp,Voltage,Current,OutputEnabled,CvMode,CcMode,UnregulatedMode,OvpTrip,OcpTrip");
                         
                         // Write data
                         foreach (var log in logs)
                         {
                             writer.WriteLine(
-                                $"{log.Timestamp:yyyy-MM-dd HH:mm:ss},{log.Voltage},{log.Current},{log.Power}," +
-                                $"{(log.OutputEnabled ? 1 : 0)},{log.OverVoltageProtection},{log.OverCurrentProtection}"
+                                $"{log.Timestamp:yyyy-MM-dd HH:mm:ss},{log.Voltage},{log.Current}," +
+                                $"{(log.OutputEnabled ? 1 : 0)},{(log.CvMode ? 1 : 0)},{(log.CcMode ? 1 : 0)},{(log.UnregulatedMode ? 1 : 0)},{(log.OvpTrip ? 1 : 0)},{(log.OcpTrip ? 1 : 0)}"
                             );
                         }
                     }
