@@ -8,7 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewModels="clr-namespace:QPX1200SPController.ViewModels"
     xmlns:xceed="http://schemas.xceed.com/wpf/xaml/toolkit"
-    Title="QPX1200SP Power Supply Controller"
+    Title="QPX1200SP Power Supply Controller" Loaded="MainWindow_OnLoaded"
     DataContext="{Binding Main, Source={StaticResource Locator}}"
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
@@ -71,8 +71,9 @@
                         <Button
                             Grid.Column="3"
                             Command="{Binding DisconnectCommand}"
-                            Content="Disconnect"
-                            IsEnabled="{Binding IsConnected}" />
+                            Content="Disconnect">
+
+                        </Button>
                         <TextBlock
                             Grid.Column="4"
                             Margin="5"
@@ -287,6 +288,7 @@
                     <Border Grid.Column="1" Padding="10">
                         <Grid>
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -578,7 +580,7 @@
                             </GroupBox>
                             <!--  Output ON/OFF  -->
                             <GroupBox
-                                Grid.Row="7"
+                                Grid.Row="8" Background="Cornsilk"
                                 Margin="0,10,0,0"
                                 Padding="10"
                                 Header="Output">
@@ -615,7 +617,7 @@
                             </GroupBox>
 
                             <CheckBox
-                                Grid.Row="8"
+                                Grid.Row="9"
                                 Margin="3"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"

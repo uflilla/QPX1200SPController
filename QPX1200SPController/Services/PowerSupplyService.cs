@@ -56,17 +56,34 @@ namespace QPX1200SPController.Services
                 QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
                 return string.Empty;
             }
-            Debug.WriteLine($"command: {command}");
+            
             try
             {
                 byte[] data = Encoding.ASCII.GetBytes(command + "\n");
+                var count = 0;
+                if (_isBusy && (command.Equals(PowerSupplyCommands.GetPsStatusCommand) || command.Equals(PowerSupplyCommands.GetPsSettingStatusCommand))) return string.Empty;
+                while (_isBusy && count < 40)
+                {
+                    await Task.Delay(50);
+                    count++;
+                }
+                if (_isBusy)
+                {
+
+                    LoggingService.Instance.LogError("No Response received from Power Supply for 2 seconds. Disconnecting...", nameof(PowerSupplyService), nameof(SendCommandAsync));
+                    Disconnect();
+                    _isBusy = false;
+                    return string.Empty;
+                }
+                _isBusy = true;
+                Debug.WriteLine($"{DateTime.Now:HH.mm.ss.fff} >> command: {command}");
                 await stream.WriteAsync(data, 0, data.Length);
                 var response=string.Empty;
                 // If command is a query (ends with ?), read response
                 if (command.TrimEnd().EndsWith("?"))
                 {
                     // Extract the command prefix for verification (e.g., "V1" from "V1?") 
-                    string commandPrefix = ExtractCommandPrefix(command);
+                    //string commandPrefix = ExtractCommandPrefix(command);
                     byte[] buffer = new byte[1024];
                     int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
                     response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
@@ -75,14 +92,18 @@ namespace QPX1200SPController.Services
                     //var responseValidated= validResponse ? response :string.Empty;
                     //Debug.WriteLine($"Validated Response: {responseValidated}");
                     //return responseValidated;
+                    Debug.WriteLine($"{DateTime.Now:HH.mm.ss.fff} >> Valid Response: {response}");
+                    _isBusy = false;
                     return response;
                 }
-                Debug.WriteLine($"Valid Response: {response}");
+                Debug.WriteLine($"{DateTime.Now:HH.mm.ss.fff} >> Valid Response: {response}");
+                _isBusy=false;
                 return string.Empty;
             }
             catch (Exception ex)
             {
                 QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
+                _isBusy = false;
                 return string.Empty;
             }
         }
@@ -212,7 +233,7 @@ namespace QPX1200SPController.Services
             }
         }
 
-        private bool _isGettingStatus;
+        private bool _isBusy;
         public async Task<PowerSupplyStatus> GetStatusAsync()
         {
             
@@ -221,31 +242,21 @@ namespace QPX1200SPController.Services
                 QPX1200SPController.Services.LoggingService.Instance.LogError("Disconnected", nameof(PowerSupplyService), nameof(GetStatusAsync));
                 return new PowerSupplyStatus { ConnectionStatus = "Disconnected" };
             }
-            var count = 0;
-            while (_isGettingStatus && count<20)
-            {
-                await Task.Delay(50);
-                count++;
-            }
-            if (_isGettingStatus)
-            {
-                
-                LoggingService.Instance.LogError("Already Getting status", nameof(PowerSupplyService), nameof(GetStatusAsync));
-                return new PowerSupplyStatus { ConnectionStatus = "Busy"};
-            }
+            
             try
             {
-                _isGettingStatus = true;
+                
                 string statusResponse = await SendCommandAsync(PowerSupplyCommands.GetPsStatusCommand);
+                //_isBusy = false;
                 var status = ParsePsStatus(statusResponse);
-                _isGettingStatus=false;
+                
                 return status;
             }
             catch (Exception ex)
             {
                 Disconnect();
                 QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(GetStatusAsync));
-                _isGettingStatus = false;
+                //_isBusy = false;
                 return new PowerSupplyStatus { ConnectionStatus = "Error" };
             }
         }
@@ -311,7 +322,7 @@ namespace QPX1200SPController.Services
             await SendCommandAsync($"OCP1 {current:F3}");
         }
 
-        public async Task<double> GetOverVoltageProtectionAsync()
+        /*public async Task<double> GetOverVoltageProtectionAsync()
         {
             string level = await SendCommandAsync("OVP1?");
             return ParseResponseValue(level, "OVP1");
@@ -328,7 +339,7 @@ namespace QPX1200SPController.Services
             // V1O? queries the set voltage value from the power supply
             string voltage = await SendCommandAsync("V1?");
             return ParseResponseValue(voltage, "V1");
-        }
+        }*/
 
         public async Task<PowerSupplySettingStatus> GetPowerSupplySettingsAsync()
         {

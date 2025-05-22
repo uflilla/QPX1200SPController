@@ -8,6 +8,8 @@ using QPX1200SPController.Services;
 using System.ComponentModel;
 using System.Windows;
 using GalaSoft.MvvmLight.CommandWpf;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
+using System.Threading;
 
 namespace QPX1200SPController.ViewModels
 {
@@ -225,7 +227,7 @@ namespace QPX1200SPController.ViewModels
 
             // Create commands
             ConnectCommand = new RelayCommand(async _ => await Connect());
-            DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => IsConnected);
+            DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => IsConnected && IsInConfigMode);
             SetVoltageCommand = new RelayCommand(async _ => await SetVoltageAsync(), _ => IsConnected && IsInConfigMode);
             SetCurrentCommand = new RelayCommand(async _ => await SetCurrentAsync(), _ => IsConnected && IsInConfigMode);
             ToggleOutputCommand = new RelayCommand(async _ => await ToggleOutput(), _ => IsConnected && IsInConfigMode);
@@ -284,22 +286,34 @@ namespace QPX1200SPController.ViewModels
             _powerSupplyService.Disconnect();
             IsConnected = false;
             ConnectionStatus = "Disconnected";
+            Status = new PowerSupplyStatus()
+            {
+                ConnectionStatus = "Disconnected", Current = 0, OutputEnabled = false, Power = 0, Voltage = 0,
+                Time = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+            };
+            SupplyName = string.Empty;
+            IsInConfigMode = false;
         }
 
         private async Task UpdateStatus()
         {
             var status = await _powerSupplyService.GetStatusAsync();
-            if (status is null || status.ConnectionStatus == "Busy") return;
+            if (status is null) return;
+
             Status = status;
-            EventStatus=status?.EventStatus;
+            EventStatus = status?.EventStatus;
             ConnectionStatus = Status.ConnectionStatus;
-            _powerSupplyStatusQueue.Enqueue(status);
-            if (Status.ConnectionStatus != "Connected")
+
+            if (status.ConnectionStatus != "Connected")
             {
                 _updateTimer.Stop();
                 _loggingTimer.Stop(); // Stop logging if disconnected
                 IsConnected = false;
-            }
+                return;
+            };
+            
+            _powerSupplyStatusQueue.Enqueue(status);
+            
 
             if (skipCounter++ % 3 == 0)
             {
@@ -405,6 +419,23 @@ namespace QPX1200SPController.ViewModels
             //settings.Save();
         }
 
-        
+
+        public void OnClosingWindow(MainWindow mainWindow, CancelEventArgs cancelEventArgs)
+        {
+            if (!IsConnected)
+            {
+                cancelEventArgs.Cancel = false;
+                return;
+            }
+            var result = MessageBox.Show("Are you sure to close?", "Warning", MessageBoxButton.YesNo);
+            if (result == MessageBoxResult.No)
+            {
+                cancelEventArgs.Cancel = true;
+                return;
+            }
+            _powerSupplyService.Disconnect();
+            Thread.Sleep(500);
+            cancelEventArgs.Cancel = false;
+        }
     }
 }

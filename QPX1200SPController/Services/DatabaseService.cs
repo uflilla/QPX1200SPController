@@ -81,11 +81,11 @@ namespace QPX1200SPController.Services
                         command.Parameters.AddWithValue("@Voltage", status.Voltage);
                         command.Parameters.AddWithValue("@Current", status.Current);
                         command.Parameters.AddWithValue("@OutputEnabled", status.OutputEnabled ? 1 : 0);
-                        command.Parameters.AddWithValue("@CvMode", status.EventStatus.ConstantVoltageMode);
-                        command.Parameters.AddWithValue("@CcMode", status.EventStatus.ConstantCurrentMode);
-                        command.Parameters.AddWithValue("@UnregulatedMode", status.EventStatus.UnregulatedMode);
-                        command.Parameters.AddWithValue("@OvpTrip", status.EventStatus.OverVoltageTrip);
-                        command.Parameters.AddWithValue("@OcpTrip", status.EventStatus.OverCurrentTrip);
+                        command.Parameters.AddWithValue("@CvMode", status.EventStatus?.ConstantVoltageMode);
+                        command.Parameters.AddWithValue("@CcMode", status.EventStatus?.ConstantCurrentMode);
+                        command.Parameters.AddWithValue("@UnregulatedMode", status.EventStatus?.UnregulatedMode);
+                        command.Parameters.AddWithValue("@OvpTrip", status.EventStatus?.OverVoltageTrip);
+                        command.Parameters.AddWithValue("@OcpTrip", status.EventStatus?.OverCurrentTrip);
                         
                         command.ExecuteNonQuery();
                     }
