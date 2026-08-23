@@ -265,17 +265,15 @@ namespace QPX1200SPController.ViewModels
                 IsConnected = true;
                 ConnectionStatus = "Connected";
                 _updateTimer.Start();
-                _loggingTimer.Start(); // Start logging data
-                                       //await UpdateStatus();
+                _loggingTimer.Start();
                 SupplyName = await _powerSupplyService.SendCommandAsync(PowerSupplyCommands.GetPsIdentityCommand);
-
                 PowerSupplySettingStatus = await _powerSupplyService.GetPowerSupplySettingsAsync();
-
             }
             else
             {
                 ConnectionStatus = "Connection Failed";
                 IsConnected = false;
+                SupplyName = string.Empty;
             }
         }
 
@@ -298,29 +296,33 @@ namespace QPX1200SPController.ViewModels
         private async Task UpdateStatus()
         {
             var status = await _powerSupplyService.GetStatusAsync();
-            if (status is null) return;
+            if (status is null)
+            {
+                // Transient skip (e.g. bus busy) — keep last UI values; do not treat as disconnect.
+                return;
+            }
 
             Status = status;
-            EventStatus = status?.EventStatus;
+            EventStatus = status.EventStatus;
             ConnectionStatus = Status.ConnectionStatus;
 
             if (status.ConnectionStatus != "Connected")
             {
                 _updateTimer.Stop();
-                _loggingTimer.Stop(); // Stop logging if disconnected
+                _loggingTimer.Stop();
                 IsConnected = false;
                 return;
-            };
-            
+            }
+
             _powerSupplyStatusQueue.Enqueue(status);
-            
 
             if (skipCounter++ % 3 == 0)
             {
-                PowerSupplySettingStatus = await _powerSupplyService.GetPowerSupplySettingsAsync();
+                var settings = await _powerSupplyService.GetPowerSupplySettingsAsync();
+                if (settings != null)
+                    PowerSupplySettingStatus = settings;
             }
 
-            // Update command can execute status for validation
             CommandManager.InvalidateRequerySuggested();
         }
 
