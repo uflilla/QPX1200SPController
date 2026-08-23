@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -8,7 +9,6 @@ using QPX1200SPController.Services;
 using System.ComponentModel;
 using System.Windows;
 using GalaSoft.MvvmLight.CommandWpf;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
 using System.Threading;
 
 namespace QPX1200SPController.ViewModels
@@ -19,7 +19,8 @@ namespace QPX1200SPController.ViewModels
         private readonly DatabaseService _databaseService;
         private readonly DispatcherTimer _updateTimer;
         private readonly DispatcherTimer _loggingTimer;
-        private readonly ConcurrentQueue<PowerSupplyStatus> _powerSupplyStatusQueue=new ConcurrentQueue<PowerSupplyStatus>();
+        private readonly ConcurrentQueue<PowerSupplyStatus> _powerSupplyStatusQueue = new ConcurrentQueue<PowerSupplyStatus>();
+        private readonly LiveTelemetryBuffer _telemetryBuffer = new LiveTelemetryBuffer();
         private uint skipCounter;
         private PowerSupplyStatus _status;
         private string _ipAddress = "170.170.170.120";
@@ -49,6 +50,10 @@ namespace QPX1200SPController.ViewModels
         private EventStatus _eventStatus;
         private PowerSupplySettingStatus _powerSupplySettingStatus;
         private bool _isInConfigMode;
+        private bool _isControlPanelVisible = true;
+        private GraphTimeWindowOption _selectedGraphTimeWindow;
+
+        public event Action GraphDataUpdated;
 
         public PowerSupplyStatus Status
         {
@@ -80,8 +85,6 @@ namespace QPX1200SPController.ViewModels
             private set => SetProperty(ref _isCurrentValid, value);
         }
 
-        
-
         public string ConnectionStatus
         {
             get => _connectionStatus;
@@ -94,6 +97,31 @@ namespace QPX1200SPController.ViewModels
             set => SetProperty(ref _isConnected, value);
         }
 
+        public bool IsControlPanelVisible
+        {
+            get => _isControlPanelVisible;
+            set
+            {
+                if (SetProperty(ref _isControlPanelVisible, value))
+                    RaisePropertyChanged(nameof(ControlPanelToggleText));
+            }
+        }
+
+        public string ControlPanelToggleText =>
+            IsControlPanelVisible ? "Hide Controls" : "Show Controls";
+
+        public IReadOnlyList<GraphTimeWindowOption> GraphTimeWindows { get; } = CreateGraphTimeWindows();
+
+        public GraphTimeWindowOption SelectedGraphTimeWindow
+        {
+            get => _selectedGraphTimeWindow;
+            set
+            {
+                if (Set(ref _selectedGraphTimeWindow, value))
+                    GraphDataUpdated?.Invoke();
+            }
+        }
+
         public ICommand ConnectCommand { get; }
         public ICommand DisconnectCommand { get; }
         public ICommand SetVoltageCommand { get; }
@@ -102,29 +130,32 @@ namespace QPX1200SPController.ViewModels
         public ICommand SetOvpCommand { get; }
         public ICommand SetOcpCommand { get; }
         public ICommand SendMiscCommand { get; }
+        public ICommand ToggleControlPanelCommand { get; }
 
         public string SupplyName
         {
             get => _supplyName;
             set => Set(ref _supplyName, value);
         }
+
         public void SettingsUpdated(Settings settings)
         {
             MinVoltageToSet = settings.MinVoltage;
             MaxVoltageToSet = settings.MaxVoltage;
-            MinCurrentToSet=settings.MinCurrent;
-            MaxCurrentToSet=settings.MaxCurrent;
+            MinCurrentToSet = settings.MinCurrent;
+            MaxCurrentToSet = settings.MaxCurrent;
             MinOvpToSet = settings.MinOvpLevel;
-            MaxOvpToSet=settings.MaxOvpLevel;
-            MinOcpToSet=settings.MinOcpLevel;
-            MaxOcpToSet=settings.MaxOcpLevel;
+            MaxOvpToSet = settings.MaxOvpLevel;
+            MinOcpToSet = settings.MinOcpLevel;
+            MaxOcpToSet = settings.MaxOcpLevel;
         }
+
         public double VoltageToSet
         {
             get => _voltageToSet;
             set
             {
-                Set(ref _voltageToSet, value); 
+                Set(ref _voltageToSet, value);
                 ValidateVoltage();
             }
         }
@@ -156,7 +187,7 @@ namespace QPX1200SPController.ViewModels
         public double CurrentToSet
         {
             get => _currentToSet;
-            set { Set(ref _currentToSet, value); ValidateCurrent();}
+            set { Set(ref _currentToSet, value); ValidateCurrent(); }
         }
 
         public double MaxOvpToSet
@@ -224,8 +255,8 @@ namespace QPX1200SPController.ViewModels
             _powerSupplyService = powerSupplyService;
             _databaseService = databaseService;
             Status = new PowerSupplyStatus();
+            _selectedGraphTimeWindow = GraphTimeWindows[2]; // 15 min
 
-            // Create commands
             ConnectCommand = new RelayCommand(async _ => await Connect());
             DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => IsConnected && IsInConfigMode);
             SetVoltageCommand = new RelayCommand(async _ => await SetVoltageAsync(), _ => IsConnected && IsInConfigMode);
@@ -233,21 +264,46 @@ namespace QPX1200SPController.ViewModels
             ToggleOutputCommand = new RelayCommand(async _ => await ToggleOutput(), _ => IsConnected && IsInConfigMode);
             SetOvpCommand = new RelayCommand(async _ => await SetOvpAsync(), _ => IsConnected && IsInConfigMode);
             SetOcpCommand = new RelayCommand(async _ => await SetOcpAsync(), _ => IsConnected && IsInConfigMode);
-            SendMiscCommand = new RelayCommand<string>( SendMiscCommandExecute, _ => IsConnected && IsInConfigMode);
+            SendMiscCommand = new RelayCommand<string>(SendMiscCommandExecute, _ => IsConnected && IsInConfigMode);
+            ToggleControlPanelCommand = new RelayCommand(_ => IsControlPanelVisible = !IsControlPanelVisible);
 
-            // Setup timer for periodic updates
             _updateTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(1)
             };
             _updateTimer.Tick += async (s, e) => await UpdateStatus();
 
-            // Setup timer for logging data
             _loggingTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(5) // Log every 10 seconds
+                Interval = TimeSpan.FromSeconds(5)
             };
             _loggingTimer.Tick += async (s, e) => await LogData();
+        }
+
+        public TelemetrySample[] GetGraphSamples()
+        {
+            DateTime? from = null;
+            if (SelectedGraphTimeWindow?.Duration != null)
+                from = DateTime.Now - SelectedGraphTimeWindow.Duration.Value;
+            return _telemetryBuffer.GetSamplesSince(from);
+        }
+
+        private static IReadOnlyList<GraphTimeWindowOption> CreateGraphTimeWindows()
+        {
+            return new List<GraphTimeWindowOption>
+            {
+                new GraphTimeWindowOption("5 min", TimeSpan.FromMinutes(5)),
+                new GraphTimeWindowOption("10 min", TimeSpan.FromMinutes(10)),
+                new GraphTimeWindowOption("15 min", TimeSpan.FromMinutes(15)),
+                new GraphTimeWindowOption("30 min", TimeSpan.FromMinutes(30)),
+                new GraphTimeWindowOption("1 hour", TimeSpan.FromHours(1)),
+                new GraphTimeWindowOption("2 hours", TimeSpan.FromHours(2)),
+                new GraphTimeWindowOption("3 hours", TimeSpan.FromHours(3)),
+                new GraphTimeWindowOption("5 hours", TimeSpan.FromHours(5)),
+                new GraphTimeWindowOption("12 hours", TimeSpan.FromHours(12)),
+                new GraphTimeWindowOption("1 day", TimeSpan.FromHours(24)),
+                new GraphTimeWindowOption("Maximum", null)
+            };
         }
 
         private async void SendMiscCommandExecute(string command)
@@ -280,27 +336,29 @@ namespace QPX1200SPController.ViewModels
         private void Disconnect()
         {
             _updateTimer.Stop();
-            _loggingTimer.Stop(); // Stop logging data
+            _loggingTimer.Stop();
             _powerSupplyService.Disconnect();
             IsConnected = false;
             ConnectionStatus = "Disconnected";
             Status = new PowerSupplyStatus()
             {
-                ConnectionStatus = "Disconnected", Current = 0, OutputEnabled = false, Power = 0, Voltage = 0,
+                ConnectionStatus = "Disconnected",
+                Current = 0,
+                OutputEnabled = false,
+                Power = 0,
+                Voltage = 0,
                 Time = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
             };
             SupplyName = string.Empty;
             IsInConfigMode = false;
+            GraphDataUpdated?.Invoke();
         }
 
         private async Task UpdateStatus()
         {
             var status = await _powerSupplyService.GetStatusAsync();
             if (status is null)
-            {
-                // Transient skip (e.g. bus busy) — keep last UI values; do not treat as disconnect.
                 return;
-            }
 
             Status = status;
             EventStatus = status.EventStatus;
@@ -315,6 +373,8 @@ namespace QPX1200SPController.ViewModels
             }
 
             _powerSupplyStatusQueue.Enqueue(status);
+            _telemetryBuffer.Add(DateTime.Now, status.Voltage, status.Current, status.Power);
+            GraphDataUpdated?.Invoke();
 
             if (skipCounter++ % 3 == 0)
             {
@@ -346,14 +406,10 @@ namespace QPX1200SPController.ViewModels
 
         private async Task SetVoltageAsync()
         {
-            
-
-            // Validate voltage is within limits
             if (VoltageToSet < MinVoltageToSet || VoltageToSet > MaxVoltageToSet)
             {
                 Xceed.Wpf.Toolkit.MessageBox.Show(Application.Current.MainWindow, "Voltage out of range.", "Error",
                     MessageBoxButton.OK);
-                // Don't proceed if outside limits
                 return;
             }
 
@@ -363,14 +419,10 @@ namespace QPX1200SPController.ViewModels
 
         private async Task SetCurrentAsync()
         {
-            
-
-            // Validate current is within limits
             if (CurrentToSet < MinCurrentToSet || CurrentToSet > MaxCurrentToSet)
             {
                 Xceed.Wpf.Toolkit.MessageBox.Show(Application.Current.MainWindow, "Current out of range.", "Error",
                     MessageBoxButton.OK);
-                // Don't proceed if outside limits
                 return;
             }
 
@@ -391,16 +443,10 @@ namespace QPX1200SPController.ViewModels
             {
                 Xceed.Wpf.Toolkit.MessageBox.Show(Application.Current.MainWindow, "OVP out of range.", "Error",
                     MessageBoxButton.OK);
-                // Don't proceed if outside limits
                 return;
             }
             await _powerSupplyService.SetOverVoltageProtectionAsync(OvpToSet);
             PowerSupplySettingStatus = await _powerSupplyService.GetPowerSupplySettingsAsync();
-
-            // Save to settings
-            //var settings = Settings.Load();
-            //settings.OverVoltageProtectionLevel = OvpLevel;
-            //settings.Save();
         }
 
         private async Task SetOcpAsync()
@@ -409,18 +455,11 @@ namespace QPX1200SPController.ViewModels
             {
                 Xceed.Wpf.Toolkit.MessageBox.Show(Application.Current.MainWindow, "OCP out of range.", "Error",
                     MessageBoxButton.OK);
-                // Don't proceed if outside limits
                 return;
             }
             await _powerSupplyService.SetOverCurrentProtectionAsync(OcpToSet);
             PowerSupplySettingStatus = await _powerSupplyService.GetPowerSupplySettingsAsync();
-
-            // Save to settings
-            //var settings = Settings.Load();
-            //settings.OverCurrentProtectionLevel = OcpLevel;
-            //settings.Save();
         }
-
 
         public void OnClosingWindow(MainWindow mainWindow, CancelEventArgs cancelEventArgs)
         {

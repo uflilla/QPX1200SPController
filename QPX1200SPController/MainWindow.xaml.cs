@@ -1,43 +1,157 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.ComponentModel;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using QPX1200SPController.Helpers;
 using QPX1200SPController.ViewModels;
+using ScottPlot;
 
 namespace QPX1200SPController
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
+        private const double DefaultControlWidth = 300;
+
+        private MainViewModel _viewModel;
+        private LivePlotPresenter _voltagePresenter;
+        private LivePlotPresenter _currentPresenter;
+        private LivePlotPresenter _powerPresenter;
+        private GridLength _savedControlWidth = new GridLength(DefaultControlWidth);
+
         public MainWindow()
         {
+            // Subscribe before InitializeComponent so the XAML DataContext is captured.
+            DataContextChanged += MainWindow_DataContextChanged;
             InitializeComponent();
             Closing += MainWindow_Closing;
+            Loaded += OnWindowLoaded;
         }
 
-        private void MainWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        private void MainWindow_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
-            var mainWindowViewModel = (MainViewModel)this.DataContext;
-            mainWindowViewModel.OnClosingWindow(this, e);
+            AttachViewModel(e.NewValue as MainViewModel);
+        }
+
+        private void AttachViewModel(MainViewModel viewModel)
+        {
+            if (_viewModel != null)
+                _viewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+
+            _viewModel = viewModel;
+            if (_viewModel == null)
+                return;
+
+            _viewModel.PropertyChanged += ViewModelOnPropertyChanged;
+
+            // Controls are not ready yet if DataContextChanged fires mid-InitializeComponent.
+            if (ControlColumn != null)
+                ApplyControlPanelVisibility(_viewModel.IsControlPanelVisible);
+        }
+
+        private void OnWindowLoaded(object sender, RoutedEventArgs e)
+        {
+            // Ensure we are attached even if DataContextChanged was missed.
+            if (_viewModel == null)
+                AttachViewModel(DataContext as MainViewModel);
+
+            if (_viewModel == null)
+                return;
+
+            if (_voltagePresenter == null)
+            {
+                _voltagePresenter = new LivePlotPresenter(
+                    VoltagePlot, "Voltage", "V",
+                    s => s.Voltage, Colors.OrangeRed);
+                _currentPresenter = new LivePlotPresenter(
+                    CurrentPlot, "Current", "A",
+                    s => s.Current, Colors.DodgerBlue);
+                _powerPresenter = new LivePlotPresenter(
+                    PowerPlot, "Power", "W",
+                    s => s.Power, Colors.ForestGreen);
+
+                _viewModel.GraphDataUpdated += OnGraphDataUpdated;
+            }
+
+            ApplyControlPanelVisibility(_viewModel.IsControlPanelVisible);
+            RefreshGraphs();
+        }
+
+        private void ViewModelOnPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsControlPanelVisible))
+                ApplyControlPanelVisibility(_viewModel.IsControlPanelVisible);
+        }
+
+        /// <summary>
+        /// Only shows/hides the control column (and its splitter).
+        /// Does not reset digital/graph widths so GridSplitter adjustments are kept.
+        /// </summary>
+        private void ApplyControlPanelVisibility(bool visible)
+        {
+            if (ControlColumn == null || ControlSplitterColumn == null
+                || ControlSplitter == null || ControlPanelBorder == null)
+                return;
+
+            if (visible)
+            {
+                var width = _savedControlWidth.IsAbsolute && _savedControlWidth.Value > 0
+                    ? _savedControlWidth
+                    : new GridLength(DefaultControlWidth);
+
+                ControlColumn.MinWidth = 180;
+                ControlColumn.Width = width;
+                ControlSplitterColumn.Width = new GridLength(5);
+                ControlSplitter.Visibility = Visibility.Visible;
+                ControlPanelBorder.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                if (ControlColumn.Width.IsAbsolute && ControlColumn.Width.Value > 0)
+                    _savedControlWidth = ControlColumn.Width;
+
+                ControlColumn.MinWidth = 0;
+                ControlColumn.Width = new GridLength(0);
+                ControlSplitterColumn.Width = new GridLength(0);
+                ControlSplitter.Visibility = Visibility.Collapsed;
+                ControlPanelBorder.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void OnGraphDataUpdated()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(RefreshGraphs));
+                return;
+            }
+            RefreshGraphs();
+        }
+
+        private void RefreshGraphs()
+        {
+            if (_viewModel == null || _voltagePresenter == null)
+                return;
+
+            var samples = _viewModel.GetGraphSamples();
+            _voltagePresenter.Update(samples);
+            _currentPresenter.Update(samples);
+            _powerPresenter.Update(samples);
+        }
+
+        private void MainWindow_Closing(object sender, CancelEventArgs e)
+        {
+            if (_viewModel != null)
+            {
+                _viewModel.GraphDataUpdated -= OnGraphDataUpdated;
+                _viewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+                _viewModel.OnClosingWindow(this, e);
+            }
         }
 
         private void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
-            Title = $"QPX1200SP Monitoring & Control v{version.ToString()}";
+            Title = $"QPX1200SP Monitoring & Control v{version}";
         }
     }
 }
