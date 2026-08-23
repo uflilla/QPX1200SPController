@@ -108,8 +108,7 @@
                   Grid.Column="1"
                   Margin="0,0,8,0"
                   VerticalAlignment="Center"
-                  materialDesign:HintAssist.Hint="Device IP"
-                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                  Style="{StaticResource MaterialDesignTextBox}"
                   Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
                 <Button
                   Grid.Column="2"
@@ -346,16 +345,15 @@
                     <TextBlock
                       VerticalAlignment="Center"
                       Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
-                      Text="Live Graphs" />
+                      Text="Time Window: " />
                     <ComboBox
                       Width="150"
                       Margin="16,0,0,0"
                       VerticalAlignment="Center"
-                      materialDesign:HintAssist.Hint="Time window"
                       DisplayMemberPath="DisplayName"
                       ItemsSource="{Binding GraphTimeWindows}"
                       SelectedItem="{Binding SelectedGraphTimeWindow}"
-                      Style="{StaticResource MaterialDesignOutlinedComboBox}" />
+                      Style="{StaticResource MaterialDesignComboBox}" />
                   </DockPanel>
 
                   <Border
