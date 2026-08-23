@@ -4,622 +4,717 @@
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
   xmlns:View="clr-namespace:QPX1200SPController.Views"
   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-  xmlns:local="clr-namespace:QPX1200SPController"
+  xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
   xmlns:scottPlot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
   xmlns:xceed="http://schemas.xceed.com/wpf/xaml/toolkit"
   Title="QPX1200SP Power Supply Controller"
+  Width="1280"
+  Height="800"
+  MinWidth="960"
+  MinHeight="640"
+  Background="{DynamicResource MaterialDesignPaper}"
   DataContext="{Binding Main, Source={StaticResource Locator}}"
+  FontFamily="{materialDesign:MaterialDesignFont}"
   Loaded="MainWindow_OnLoaded"
+  Style="{StaticResource MaterialDesignWindow}"
+  TextElement.Foreground="{DynamicResource MaterialDesignBody}"
   WindowStartupLocation="CenterScreen"
   mc:Ignorable="d">
 
-  <Window.Resources>
-    <Style TargetType="TextBlock">
-      <Setter Property="Margin" Value="5" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style TargetType="TextBox">
-      <Setter Property="Margin" Value="5" />
-      <Setter Property="Padding" Value="5" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style TargetType="Button">
-      <Setter Property="Margin" Value="5" />
-      <Setter Property="Padding" Value="10,5" />
-      <Setter Property="MinWidth" Value="80" />
-    </Style>
-  </Window.Resources>
-
-  <TabControl>
-    <TabItem Header="Monitoring &amp; Control">
-      <Grid>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="*" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <!--  Connection bar  -->
-        <Border
-          Grid.Row="0"
-          Padding="5"
-          BorderBrush="Gray"
-          BorderThickness="0,0,0,1">
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="150" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBlock
-              Grid.Column="0"
-              FontWeight="Bold"
-              Text="IP Address:" />
-            <TextBox
-              Grid.Column="1"
-              FontSize="16"
-              Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
-            <Button
-              Grid.Column="2"
-              Command="{Binding ConnectCommand}"
-              Content="Connect"
-              IsEnabled="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}" />
-            <Button
-              Grid.Column="3"
-              Command="{Binding DisconnectCommand}"
-              Content="Disconnect" />
-            <Button
-              Grid.Column="4"
-              Command="{Binding ToggleControlPanelCommand}"
-              ToolTip="{Binding ControlPanelToggleText}">
-              <StackPanel Orientation="Horizontal">
-                <TextBlock
-                  Margin="0,0,6,0"
-                  FontFamily="Segoe MDL2 Assets"
-                  FontSize="14"
-                  Text="&#xE700;" />
-                <TextBlock Text="{Binding ControlPanelToggleText}" />
-              </StackPanel>
-            </Button>
-            <TextBlock
-              Grid.Column="5"
-              Margin="5"
-              Text="{Binding SupplyName, TargetNullValue='---'}"
-              TextTrimming="CharacterEllipsis"
-              ToolTip="{Binding SupplyName}" />
-            <TextBlock
-              Grid.Column="6"
-              Margin="10,0"
+  <materialDesign:DialogHost Identifier="RootDialog">
+    <DockPanel>
+      <materialDesign:ColorZone
+        Padding="16,10"
+        materialDesign:ElevationAssist.Elevation="Dp2"
+        DockPanel.Dock="Top"
+        Mode="PrimaryMid">
+        <DockPanel>
+          <StackPanel
+            VerticalAlignment="Center"
+            DockPanel.Dock="Left"
+            Orientation="Horizontal">
+            <materialDesign:PackIcon
+              Width="28"
+              Height="28"
               VerticalAlignment="Center"
-              FontWeight="Bold"
-              Text="{Binding ConnectionStatus}">
-              <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                  <Setter Property="Foreground" Value="OrangeRed" />
-                  <Style.Triggers>
-                    <DataTrigger Binding="{Binding ConnectionStatus}" Value="Connected">
-                      <Setter Property="Foreground" Value="ForestGreen" />
-                    </DataTrigger>
-                  </Style.Triggers>
-                </Style>
-              </TextBlock.Style>
-            </TextBlock>
-          </Grid>
-        </Border>
+              Kind="Flash" />
+            <TextBlock
+              Margin="10,0,0,0"
+              VerticalAlignment="Center"
+              FontSize="18"
+              FontWeight="SemiBold"
+              Text="QPX1200SP" />
+            <TextBlock
+              Margin="8,0,0,0"
+              VerticalAlignment="Center"
+              Opacity="0.85"
+              Text="Monitoring &amp; Control" />
+          </StackPanel>
+          <TextBlock
+            Margin="16,0,0,0"
+            VerticalAlignment="Center"
+            DockPanel.Dock="Right"
+            FontWeight="SemiBold"
+            Text="{Binding ConnectionStatus}">
+            <TextBlock.Style>
+              <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="#FFCDD2" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ConnectionStatus}" Value="Connected">
+                    <Setter Property="Foreground" Value="#C8E6C9" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </DockPanel>
+      </materialDesign:ColorZone>
 
-        <!--  Main: Digital | Graphs | Control  -->
-        <Grid x:Name="MainContentGrid" Grid.Row="1">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="DigitalColumn" Width="*" MinWidth="150" />
-            <ColumnDefinition Width="5" />
-            <ColumnDefinition x:Name="GraphColumn" Width="*" MinWidth="200" />
-            <ColumnDefinition x:Name="ControlSplitterColumn" Width="5" />
-            <ColumnDefinition x:Name="ControlColumn" Width="300" MinWidth="180" />
-          </Grid.ColumnDefinitions>
+      <TabControl
+        Style="{StaticResource MaterialDesignTabControl}"
+        materialDesign:ColorZoneAssist.Mode="Standard">
+        <TabItem Header="Monitoring &amp; Control">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-          <!--  Digital values  -->
-          <Border
-            Grid.Column="0"
-            Padding="10"
-            BorderBrush="Gray"
-            BorderThickness="0,0,1,0">
-            <Grid>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-              </Grid.RowDefinitions>
-              <TextBlock
-                Grid.Row="0"
-                Margin="0,0,0,5"
-                HorizontalAlignment="Center"
-                FontSize="18"
-                FontWeight="Bold"
-                Foreground="DarkOrange"
-                Text="{Binding Status.Time, TargetNullValue='---'}" />
-              <Grid Grid.Row="1">
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="2*" />
-                  <RowDefinition Height="2*" />
-                  <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <!--  Connection bar  -->
+            <materialDesign:Card
+              Grid.Row="0"
+              Margin="12,12,12,8"
+              Padding="12,10"
+              materialDesign:ElevationAssist.Elevation="Dp2">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="180" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-                <Border
-                  Grid.Row="0"
-                  Margin="5"
-                  Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
-                  BorderBrush="DarkGray"
-                  BorderThickness="1">
-                  <Grid>
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock
-                      Grid.Row="0"
-                      HorizontalAlignment="Center"
-                      FontSize="16"
-                      FontWeight="Bold"
-                      Text="VOLTAGE (V)" />
-                    <TextBlock
-                      Grid.Row="1"
-                      Margin="10,0,10,0"
-                      HorizontalAlignment="Left"
-                      VerticalAlignment="Bottom"
-                      FontSize="14"
-                      FontWeight="Bold"
-                      Text="{Binding PowerSupplySettingStatus.SetVoltage, StringFormat='Set: {0:F2}V', TargetNullValue='---'}" />
-                    <TextBlock
-                      Grid.Row="1"
-                      Margin="0,0,10,0"
-                      HorizontalAlignment="Right"
-                      VerticalAlignment="Bottom"
-                      FontSize="14"
-                      FontWeight="Bold"
-                      Text="{Binding PowerSupplySettingStatus.SetOvpLevel, StringFormat='OVP: {0:F2}V', TargetNullValue='---'}" />
-                    <Viewbox Grid.Row="1" Stretch="Uniform">
-                      <TextBlock
-                        FontSize="120"
-                        FontWeight="Bold"
-                        Text="{Binding Status.Voltage, StringFormat='{}{0:F3}'}" />
-                    </Viewbox>
-                  </Grid>
-                </Border>
-
-                <Border
-                  Grid.Row="1"
-                  Margin="5"
-                  Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
-                  BorderBrush="DarkGray"
-                  BorderThickness="1">
-                  <Grid>
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock
-                      Grid.Row="0"
-                      HorizontalAlignment="Center"
-                      FontSize="16"
-                      FontWeight="Bold"
-                      Text="CURRENT (A)" />
-                    <TextBlock
-                      Grid.Row="1"
-                      Margin="10,0,10,0"
-                      HorizontalAlignment="Left"
-                      VerticalAlignment="Bottom"
-                      FontSize="14"
-                      FontWeight="Bold"
-                      Text="{Binding PowerSupplySettingStatus.SetCurrent, StringFormat='Set: {0:F2}A', TargetNullValue='---'}" />
-                    <TextBlock
-                      Grid.Row="1"
-                      Margin="0,0,10,0"
-                      HorizontalAlignment="Right"
-                      VerticalAlignment="Bottom"
-                      FontSize="14"
-                      FontWeight="Bold"
-                      Text="{Binding PowerSupplySettingStatus.SetOcpLevel, StringFormat='OCP: {0:F2}A', TargetNullValue='---'}" />
-                    <Viewbox Grid.Row="1" Stretch="Uniform">
-                      <TextBlock
-                        FontSize="120"
-                        FontWeight="Bold"
-                        Text="{Binding Status.Current, StringFormat={}{0:F3}}" />
-                    </Viewbox>
-                  </Grid>
-                </Border>
-
-                <Border
-                  Grid.Row="2"
-                  Margin="5"
-                  Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
-                  BorderBrush="DarkGray"
-                  BorderThickness="1">
-                  <Grid>
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock
-                      Grid.Row="0"
-                      HorizontalAlignment="Center"
-                      FontSize="16"
-                      FontWeight="Bold"
-                      Text="POWER (W)" />
-                    <Viewbox Grid.Row="1" Stretch="Uniform">
-                      <TextBlock
-                        FontSize="120"
-                        FontWeight="Bold"
-                        Text="{Binding Status.Power, StringFormat={}{0:F2}}" />
-                    </Viewbox>
-                  </Grid>
-                </Border>
-              </Grid>
-            </Grid>
-          </Border>
-
-          <GridSplitter
-            Grid.Column="1"
-            Width="5"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            Background="LightGray"
-            ResizeBehavior="PreviousAndNext"
-            ShowsPreview="True" />
-
-          <!--  Live graphs  -->
-          <Border
-            Grid.Column="2"
-            Padding="8"
-            BorderBrush="Gray"
-            BorderThickness="0,0,1,0">
-            <Grid>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="2*" />
-                <RowDefinition Height="2*" />
-                <RowDefinition Height="*" />
-              </Grid.RowDefinitions>
-
-              <DockPanel
-                Grid.Row="0"
-                Margin="0,0,0,6"
-                LastChildFill="False">
                 <TextBlock
+                  Grid.Column="0"
+                  Margin="0,0,8,0"
                   VerticalAlignment="Center"
-                  FontWeight="Bold"
-                  Text="Time window:" />
-                <ComboBox
-                  Width="140"
+                  Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                  Text="IP Address" />
+                <TextBox
+                  Grid.Column="1"
+                  Margin="0,0,8,0"
+                  VerticalAlignment="Center"
+                  materialDesign:HintAssist.Hint="Device IP"
+                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                  Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
+                <Button
+                  Grid.Column="2"
+                  Margin="0,0,6,0"
+                  Command="{Binding ConnectCommand}"
+                  Content="CONNECT"
+                  IsEnabled="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}"
+                  Style="{StaticResource MaterialDesignRaisedButton}" />
+                <Button
+                  Grid.Column="3"
+                  Margin="0,0,6,0"
+                  Command="{Binding DisconnectCommand}"
+                  Content="DISCONNECT"
+                  Style="{StaticResource MaterialDesignOutlinedButton}" />
+                <Button
+                  Grid.Column="4"
+                  Margin="0,0,8,0"
+                  Command="{Binding ToggleControlPanelCommand}"
+                  Style="{StaticResource MaterialDesignOutlinedButton}"
+                  ToolTip="{Binding ControlPanelToggleText}">
+                  <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon
+                      Width="18"
+                      Height="18"
+                      Margin="0,0,6,0"
+                      VerticalAlignment="Center"
+                      Kind="ViewDashboardOutline" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding ControlPanelToggleText}" />
+                  </StackPanel>
+                </Button>
+                <TextBlock
+                  Grid.Column="5"
                   Margin="8,0,0,0"
                   VerticalAlignment="Center"
-                  DisplayMemberPath="DisplayName"
-                  ItemsSource="{Binding GraphTimeWindows}"
-                  SelectedItem="{Binding SelectedGraphTimeWindow}" />
-              </DockPanel>
-
-              <scottPlot:WpfPlot
-                x:Name="VoltagePlot"
-                Grid.Row="1"
-                Margin="0,2" />
-              <scottPlot:WpfPlot
-                x:Name="CurrentPlot"
-                Grid.Row="2"
-                Margin="0,2" />
-              <scottPlot:WpfPlot
-                x:Name="PowerPlot"
-                Grid.Row="3"
-                Margin="0,2" />
-            </Grid>
-          </Border>
-
-          <GridSplitter
-            x:Name="ControlSplitter"
-            Grid.Column="3"
-            Width="5"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            Background="LightGray"
-            ResizeBehavior="PreviousAndNext"
-            ShowsPreview="True" />
-
-          <!--  Control panel (visibility driven by code-behind with column widths)  -->
-          <Border
-            x:Name="ControlPanelBorder"
-            Grid.Column="4"
-            Padding="10">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-              <Grid>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <TextBlock
-                  Grid.Row="0"
-                  Margin="0,0,0,5"
-                  HorizontalAlignment="Center"
-                  FontSize="18"
-                  FontWeight="Bold"
-                  Text="CONTROL PANEL" />
-
-                <GroupBox
-                  Grid.Row="1"
-                  Margin="0,5"
-                  Padding="5"
-                  Header="Voltage Control">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <xceed:DoubleUpDown
-                      FontSize="16"
-                      Increment="0.1"
-                      Maximum="{Binding MaxVoltageToSet}"
-                      Minimum="{Binding MinVoltageToSet}"
-                      TextAlignment="Right"
-                      Value="{Binding VoltageToSet}" />
-                    <TextBlock Grid.Column="1" Text="V" />
-                    <Button
-                      Grid.Column="2"
-                      Margin="10,0,0,0"
-                      Command="{Binding SetVoltageCommand}"
-                      Content="Set">
-                      <Button.Style>
-                        <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
-                          <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsVoltageValid}" Value="False">
-                              <Setter Property="IsEnabled" Value="False" />
-                            </DataTrigger>
-                          </Style.Triggers>
-                        </Style>
-                      </Button.Style>
-                    </Button>
-                  </Grid>
-                </GroupBox>
-
-                <GroupBox
-                  Grid.Row="2"
-                  Margin="0,5"
-                  Padding="10"
-                  Header="Current Control">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <xceed:DoubleUpDown
-                      FontSize="16"
-                      Increment="0.1"
-                      Maximum="{Binding MaxCurrentToSet}"
-                      Minimum="{Binding MinCurrentToSet}"
-                      TextAlignment="Right"
-                      Value="{Binding CurrentToSet}" />
-                    <TextBlock Grid.Column="1" Text="A" />
-                    <Button
-                      Grid.Column="2"
-                      Margin="10,0,0,0"
-                      Command="{Binding SetCurrentCommand}"
-                      Content="Set">
-                      <Button.Style>
-                        <Style BasedOn="{StaticResource {x:Type Button}}" TargetType="Button">
-                          <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsCurrentValid}" Value="False">
-                              <Setter Property="IsEnabled" Value="False" />
-                            </DataTrigger>
-                          </Style.Triggers>
-                        </Style>
-                      </Button.Style>
-                    </Button>
-                  </Grid>
-                </GroupBox>
-
-                <GroupBox
-                  Grid.Row="3"
-                  Margin="0,5"
-                  Padding="10"
-                  Header="Over Voltage Protection">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <xceed:DoubleUpDown
-                      FontSize="16"
-                      Increment="0.1"
-                      Maximum="{Binding MaxOvpToSet}"
-                      Minimum="{Binding MinOvpToSet}"
-                      TextAlignment="Right"
-                      Value="{Binding OvpToSet}" />
-                    <TextBlock Grid.Column="1" Text="V" />
-                    <Button
-                      Grid.Column="2"
-                      Margin="10,0,0,0"
-                      Command="{Binding SetOvpCommand}"
-                      Content="Set" />
-                  </Grid>
-                </GroupBox>
-
-                <GroupBox
-                  Grid.Row="4"
-                  Margin="0,5"
-                  Padding="10"
-                  Header="Over Current Protection">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <xceed:DoubleUpDown
-                      FontSize="16"
-                      Increment="0.1"
-                      Maximum="{Binding MaxOcpToSet}"
-                      Minimum="{Binding MinOcpToSet}"
-                      TextAlignment="Right"
-                      Value="{Binding OcpToSet}" />
-                    <TextBlock Grid.Column="1" Text="A" />
-                    <Button
-                      Grid.Column="2"
-                      Margin="10,0,0,0"
-                      Command="{Binding SetOcpCommand}"
-                      Content="Set" />
-                  </Grid>
-                </GroupBox>
-
-                <GroupBox
-                  Grid.Row="5"
-                  Margin="0,5"
-                  Padding="10"
-                  Header="Misc Control">
-                  <UniformGrid Columns="2">
-                    <Button
-                      Padding="10,5"
-                      Command="{Binding SendMiscCommand}"
-                      CommandParameter="TRIPRST"
-                      Content="TRIP Reset" />
-                    <Button
-                      Padding="10,5"
-                      Command="{Binding SendMiscCommand}"
-                      CommandParameter="LOCAL"
-                      Content="LOCAL" />
-                  </UniformGrid>
-                </GroupBox>
-
-                <GroupBox
-                  Grid.Row="6"
-                  Margin="0,10,0,0"
-                  Padding="10"
-                  Background="Cornsilk"
-                  Header="Output">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal">
-                      <TextBlock
-                        FontSize="16"
-                        FontWeight="Bold"
-                        Text="Status:" />
-                      <TextBlock
-                        Margin="10,0,0,0"
-                        FontSize="16"
-                        FontWeight="Bold"
-                        Foreground="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToForegroundConverter}}"
-                        Text="{Binding Status.OutputEnabled, Converter={StaticResource BoolToOnOffConverter}}" />
-                    </StackPanel>
-                    <Button
-                      Grid.Column="1"
-                      Padding="15,8"
-                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonBackgroundConverter}}"
-                      Command="{Binding ToggleOutputCommand}"
-                      Content="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonTextConverter}}"
-                      FontWeight="Bold" />
-                  </Grid>
-                </GroupBox>
-
-                <CheckBox
-                  Grid.Row="7"
-                  Margin="3,10,3,3"
-                  IsChecked="{Binding IsInConfigMode}">
-                  Enable Configuration
-                </CheckBox>
+                  Opacity="0.8"
+                  Text="{Binding SupplyName, TargetNullValue='---'}"
+                  TextTrimming="CharacterEllipsis"
+                  ToolTip="{Binding SupplyName}" />
               </Grid>
-            </ScrollViewer>
-          </Border>
-        </Grid>
+            </materialDesign:Card>
 
-        <!--  Event status bar (bottom)  -->
-        <Border
-          Grid.Row="2"
-          Padding="8,6"
-          BorderBrush="Gray"
-          BorderThickness="0,1,0,0">
-          <DockPanel>
-            <TextBlock
-              Margin="0,0,12,0"
-              VerticalAlignment="Center"
-              FontWeight="Bold"
-              Text="Event Status" />
-            <UniformGrid Columns="6">
-              <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <Ellipse
-                  Width="14"
-                  Height="14"
-                  Margin="0,0,6,0"
-                  Fill="{Binding EventStatus.ConstantVoltageMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                <TextBlock Text="CV" />
-              </StackPanel>
-              <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <Ellipse
-                  Width="14"
-                  Height="14"
-                  Margin="0,0,6,0"
-                  Fill="{Binding EventStatus.ConstantCurrentMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                <TextBlock Text="CC" />
-              </StackPanel>
-              <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <Ellipse
-                  Width="14"
-                  Height="14"
-                  Margin="0,0,6,0"
-                  Fill="{Binding EventStatus.UnregulatedMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                <TextBlock Text="Unreg" />
-              </StackPanel>
-              <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <Ellipse
-                  Width="14"
-                  Height="14"
-                  Margin="0,0,6,0"
-                  Fill="{Binding EventStatus.OverVoltageTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                <TextBlock Text="OVP" />
-              </StackPanel>
-              <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <Ellipse
-                  Width="14"
-                  Height="14"
-                  Margin="0,0,6,0"
-                  Fill="{Binding EventStatus.OverCurrentTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                <TextBlock Text="OCP" />
-              </StackPanel>
-              <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                <Ellipse
-                  Width="14"
-                  Height="14"
-                  Margin="0,0,6,0"
-                  Fill="{Binding EventStatus.FaultTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                <TextBlock Text="Fault" />
-              </StackPanel>
-            </UniformGrid>
-          </DockPanel>
-        </Border>
-      </Grid>
-    </TabItem>
+            <!--  Main: Digital | Graphs | Control  -->
+            <Grid
+              x:Name="MainContentGrid"
+              Grid.Row="1"
+              Margin="8,0,8,8">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="DigitalColumn" Width="*" MinWidth="150" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition x:Name="GraphColumn" Width="*" MinWidth="200" />
+                <ColumnDefinition x:Name="ControlSplitterColumn" Width="6" />
+                <ColumnDefinition x:Name="ControlColumn" Width="300" MinWidth="180" />
+              </Grid.ColumnDefinitions>
 
-    <TabItem Header="Settings">
-      <View:Settings />
-    </TabItem>
-    <TabItem Header="Data Logs">
-      <View:DataRetrievalView />
-    </TabItem>
-    <TabItem Header="App Logs">
-      <View:AppLogsView />
-    </TabItem>
-  </TabControl>
+              <!--  Digital values  -->
+              <materialDesign:Card
+                Grid.Column="0"
+                Margin="4"
+                Padding="12"
+                materialDesign:ElevationAssist.Elevation="Dp2">
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                  </Grid.RowDefinitions>
+                  <TextBlock
+                    Grid.Row="0"
+                    Margin="0,0,0,8"
+                    HorizontalAlignment="Center"
+                    FontSize="16"
+                    FontWeight="SemiBold"
+                    Foreground="{DynamicResource SecondaryHueMidBrush}"
+                    Text="{Binding Status.Time, TargetNullValue='---'}" />
+                  <Grid Grid.Row="1">
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="2*" />
+                      <RowDefinition Height="2*" />
+                      <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border
+                      Grid.Row="0"
+                      Margin="4"
+                      Padding="8"
+                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
+                      CornerRadius="8">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                          Grid.Row="0"
+                          HorizontalAlignment="Center"
+                          FontSize="13"
+                          FontWeight="SemiBold"
+                          Opacity="0.75"
+                          Text="VOLTAGE (V)" />
+                        <TextBlock
+                          Grid.Row="1"
+                          Margin="8,0,8,4"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Bottom"
+                          Panel.ZIndex="1"
+                          FontSize="12"
+                          FontWeight="SemiBold"
+                          Text="{Binding PowerSupplySettingStatus.SetVoltage, StringFormat='Set: {0:F2}V', TargetNullValue='---'}" />
+                        <TextBlock
+                          Grid.Row="1"
+                          Margin="0,0,8,4"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Bottom"
+                          Panel.ZIndex="1"
+                          FontSize="12"
+                          FontWeight="SemiBold"
+                          Text="{Binding PowerSupplySettingStatus.SetOvpLevel, StringFormat='OVP: {0:F2}V', TargetNullValue='---'}" />
+                        <Viewbox Grid.Row="1" Stretch="Uniform">
+                          <TextBlock
+                            FontSize="120"
+                            FontWeight="Bold"
+                            Text="{Binding Status.Voltage, StringFormat='{}{0:F3}'}" />
+                        </Viewbox>
+                      </Grid>
+                    </Border>
+
+                    <Border
+                      Grid.Row="1"
+                      Margin="4"
+                      Padding="8"
+                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
+                      CornerRadius="8">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                          Grid.Row="0"
+                          HorizontalAlignment="Center"
+                          FontSize="13"
+                          FontWeight="SemiBold"
+                          Opacity="0.75"
+                          Text="CURRENT (A)" />
+                        <TextBlock
+                          Grid.Row="1"
+                          Margin="8,0,8,4"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Bottom"
+                          Panel.ZIndex="1"
+                          FontSize="12"
+                          FontWeight="SemiBold"
+                          Text="{Binding PowerSupplySettingStatus.SetCurrent, StringFormat='Set: {0:F2}A', TargetNullValue='---'}" />
+                        <TextBlock
+                          Grid.Row="1"
+                          Margin="0,0,8,4"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Bottom"
+                          Panel.ZIndex="1"
+                          FontSize="12"
+                          FontWeight="SemiBold"
+                          Text="{Binding PowerSupplySettingStatus.SetOcpLevel, StringFormat='OCP: {0:F2}A', TargetNullValue='---'}" />
+                        <Viewbox Grid.Row="1" Stretch="Uniform">
+                          <TextBlock
+                            FontSize="120"
+                            FontWeight="Bold"
+                            Text="{Binding Status.Current, StringFormat={}{0:F3}}" />
+                        </Viewbox>
+                      </Grid>
+                    </Border>
+
+                    <Border
+                      Grid.Row="2"
+                      Margin="4"
+                      Padding="8"
+                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
+                      CornerRadius="8">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                          Grid.Row="0"
+                          HorizontalAlignment="Center"
+                          FontSize="13"
+                          FontWeight="SemiBold"
+                          Opacity="0.75"
+                          Text="POWER (W)" />
+                        <Viewbox Grid.Row="1" Stretch="Uniform">
+                          <TextBlock
+                            FontSize="120"
+                            FontWeight="Bold"
+                            Text="{Binding Status.Power, StringFormat={}{0:F2}}" />
+                        </Viewbox>
+                      </Grid>
+                    </Border>
+                  </Grid>
+                </Grid>
+              </materialDesign:Card>
+
+              <GridSplitter
+                Grid.Column="1"
+                Width="6"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="{DynamicResource MaterialDesignDivider}"
+                ResizeBehavior="PreviousAndNext"
+                ShowsPreview="True" />
+
+              <!--  Live graphs  -->
+              <materialDesign:Card
+                Grid.Column="2"
+                Margin="4"
+                Padding="12"
+                materialDesign:ElevationAssist.Elevation="Dp2">
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="*" />
+                  </Grid.RowDefinitions>
+
+                  <DockPanel
+                    Grid.Row="0"
+                    Margin="0,0,0,8"
+                    LastChildFill="False">
+                    <materialDesign:PackIcon
+                      Width="20"
+                      Height="20"
+                      Margin="0,0,8,0"
+                      VerticalAlignment="Center"
+                      Kind="ChartLine" />
+                    <TextBlock
+                      VerticalAlignment="Center"
+                      Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
+                      Text="Live Graphs" />
+                    <ComboBox
+                      Width="150"
+                      Margin="16,0,0,0"
+                      VerticalAlignment="Center"
+                      materialDesign:HintAssist.Hint="Time window"
+                      DisplayMemberPath="DisplayName"
+                      ItemsSource="{Binding GraphTimeWindows}"
+                      SelectedItem="{Binding SelectedGraphTimeWindow}"
+                      Style="{StaticResource MaterialDesignOutlinedComboBox}" />
+                  </DockPanel>
+
+                  <Border
+                    Grid.Row="1"
+                    Margin="0,2"
+                    Background="{DynamicResource MaterialDesignCardBackground}"
+                    CornerRadius="4">
+                    <scottPlot:WpfPlot x:Name="VoltagePlot" />
+                  </Border>
+                  <Border
+                    Grid.Row="2"
+                    Margin="0,2"
+                    Background="{DynamicResource MaterialDesignCardBackground}"
+                    CornerRadius="4">
+                    <scottPlot:WpfPlot x:Name="CurrentPlot" />
+                  </Border>
+                  <Border
+                    Grid.Row="3"
+                    Margin="0,2"
+                    Background="{DynamicResource MaterialDesignCardBackground}"
+                    CornerRadius="4">
+                    <scottPlot:WpfPlot x:Name="PowerPlot" />
+                  </Border>
+                </Grid>
+              </materialDesign:Card>
+
+              <GridSplitter
+                x:Name="ControlSplitter"
+                Grid.Column="3"
+                Width="6"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="{DynamicResource MaterialDesignDivider}"
+                ResizeBehavior="PreviousAndNext"
+                ShowsPreview="True" />
+
+              <!--  Control panel (visibility driven by code-behind with column widths)  -->
+              <materialDesign:Card
+                x:Name="ControlPanelBorder"
+                Grid.Column="4"
+                Margin="4"
+                Padding="12"
+                materialDesign:ElevationAssist.Elevation="Dp2">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <StackPanel>
+                    <TextBlock
+                      Margin="0,0,0,12"
+                      HorizontalAlignment="Center"
+                      Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                      Text="CONTROL PANEL" />
+
+                    <materialDesign:Card
+                      Margin="0,0,0,10"
+                      Padding="10"
+                      UniformCornerRadius="6">
+                      <StackPanel>
+                        <TextBlock
+                          Margin="0,0,0,8"
+                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                          Text="Voltage Control" />
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <xceed:DoubleUpDown
+                            FontSize="16"
+                            Increment="0.1"
+                            Maximum="{Binding MaxVoltageToSet}"
+                            Minimum="{Binding MinVoltageToSet}"
+                            TextAlignment="Right"
+                            Value="{Binding VoltageToSet}" />
+                          <TextBlock
+                            Grid.Column="1"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Text="V" />
+                          <Button
+                            Grid.Column="2"
+                            Command="{Binding SetVoltageCommand}"
+                            Content="SET">
+                            <Button.Style>
+                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding IsVoltageValid}" Value="False">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </Button.Style>
+                          </Button>
+                        </Grid>
+                      </StackPanel>
+                    </materialDesign:Card>
+
+                    <materialDesign:Card
+                      Margin="0,0,0,10"
+                      Padding="10"
+                      UniformCornerRadius="6">
+                      <StackPanel>
+                        <TextBlock
+                          Margin="0,0,0,8"
+                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                          Text="Current Control" />
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <xceed:DoubleUpDown
+                            FontSize="16"
+                            Increment="0.1"
+                            Maximum="{Binding MaxCurrentToSet}"
+                            Minimum="{Binding MinCurrentToSet}"
+                            TextAlignment="Right"
+                            Value="{Binding CurrentToSet}" />
+                          <TextBlock
+                            Grid.Column="1"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Text="A" />
+                          <Button
+                            Grid.Column="2"
+                            Command="{Binding SetCurrentCommand}"
+                            Content="SET">
+                            <Button.Style>
+                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding IsCurrentValid}" Value="False">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </Button.Style>
+                          </Button>
+                        </Grid>
+                      </StackPanel>
+                    </materialDesign:Card>
+
+                    <materialDesign:Card
+                      Margin="0,0,0,10"
+                      Padding="10"
+                      UniformCornerRadius="6">
+                      <StackPanel>
+                        <TextBlock
+                          Margin="0,0,0,8"
+                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                          Text="Over Voltage Protection" />
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <xceed:DoubleUpDown
+                            FontSize="16"
+                            Increment="0.1"
+                            Maximum="{Binding MaxOvpToSet}"
+                            Minimum="{Binding MinOvpToSet}"
+                            TextAlignment="Right"
+                            Value="{Binding OvpToSet}" />
+                          <TextBlock
+                            Grid.Column="1"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Text="V" />
+                          <Button
+                            Grid.Column="2"
+                            Command="{Binding SetOvpCommand}"
+                            Content="SET"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                        </Grid>
+                      </StackPanel>
+                    </materialDesign:Card>
+
+                    <materialDesign:Card
+                      Margin="0,0,0,10"
+                      Padding="10"
+                      UniformCornerRadius="6">
+                      <StackPanel>
+                        <TextBlock
+                          Margin="0,0,0,8"
+                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                          Text="Over Current Protection" />
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <xceed:DoubleUpDown
+                            FontSize="16"
+                            Increment="0.1"
+                            Maximum="{Binding MaxOcpToSet}"
+                            Minimum="{Binding MinOcpToSet}"
+                            TextAlignment="Right"
+                            Value="{Binding OcpToSet}" />
+                          <TextBlock
+                            Grid.Column="1"
+                            Margin="8,0"
+                            VerticalAlignment="Center"
+                            Text="A" />
+                          <Button
+                            Grid.Column="2"
+                            Command="{Binding SetOcpCommand}"
+                            Content="SET"
+                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                        </Grid>
+                      </StackPanel>
+                    </materialDesign:Card>
+
+                    <materialDesign:Card
+                      Margin="0,0,0,10"
+                      Padding="10"
+                      UniformCornerRadius="6">
+                      <StackPanel>
+                        <TextBlock
+                          Margin="0,0,0,8"
+                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                          Text="Misc Control" />
+                        <UniformGrid Columns="2">
+                          <Button
+                            Margin="0,0,4,0"
+                            Command="{Binding SendMiscCommand}"
+                            CommandParameter="TRIPRST"
+                            Content="TRIP Reset"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                          <Button
+                            Margin="4,0,0,0"
+                            Command="{Binding SendMiscCommand}"
+                            CommandParameter="LOCAL"
+                            Content="LOCAL"
+                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                        </UniformGrid>
+                      </StackPanel>
+                    </materialDesign:Card>
+
+                    <materialDesign:Card
+                      Margin="0,0,0,12"
+                      Padding="12"
+                      Background="{DynamicResource SecondaryHueLightBrush}"
+                      UniformCornerRadius="6">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            Text="Output:" />
+                          <TextBlock
+                            Margin="10,0,0,0"
+                            VerticalAlignment="Center"
+                            FontSize="16"
+                            FontWeight="Bold"
+                            Foreground="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToForegroundConverter}}"
+                            Text="{Binding Status.OutputEnabled, Converter={StaticResource BoolToOnOffConverter}}" />
+                        </StackPanel>
+                        <Button
+                          Grid.Column="1"
+                          MinWidth="110"
+                          Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonBackgroundConverter}}"
+                          Command="{Binding ToggleOutputCommand}"
+                          Content="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonTextConverter}}"
+                          FontWeight="Bold"
+                          Foreground="White"
+                          Style="{StaticResource MaterialDesignRaisedButton}" />
+                      </Grid>
+                    </materialDesign:Card>
+
+                    <CheckBox
+                      Content="Enable Configuration"
+                      IsChecked="{Binding IsInConfigMode}"
+                      Style="{StaticResource MaterialDesignCheckBox}" />
+                  </StackPanel>
+                </ScrollViewer>
+              </materialDesign:Card>
+            </Grid>
+
+            <!--  Event status bar (bottom)  -->
+            <materialDesign:ColorZone
+              Grid.Row="2"
+              Padding="16,10"
+              Mode="Standard">
+              <DockPanel>
+                <TextBlock
+                  Margin="0,0,16,0"
+                  VerticalAlignment="Center"
+                  FontWeight="SemiBold"
+                  Text="Event Status" />
+                <UniformGrid Columns="6">
+                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <Ellipse
+                      Width="12"
+                      Height="12"
+                      Margin="0,0,6,0"
+                      Fill="{Binding EventStatus.ConstantVoltageMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
+                    <TextBlock VerticalAlignment="Center" Text="CV" />
+                  </StackPanel>
+                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <Ellipse
+                      Width="12"
+                      Height="12"
+                      Margin="0,0,6,0"
+                      Fill="{Binding EventStatus.ConstantCurrentMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
+                    <TextBlock VerticalAlignment="Center" Text="CC" />
+                  </StackPanel>
+                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <Ellipse
+                      Width="12"
+                      Height="12"
+                      Margin="0,0,6,0"
+                      Fill="{Binding EventStatus.UnregulatedMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
+                    <TextBlock VerticalAlignment="Center" Text="Unreg" />
+                  </StackPanel>
+                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <Ellipse
+                      Width="12"
+                      Height="12"
+                      Margin="0,0,6,0"
+                      Fill="{Binding EventStatus.OverVoltageTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
+                    <TextBlock VerticalAlignment="Center" Text="OVP" />
+                  </StackPanel>
+                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <Ellipse
+                      Width="12"
+                      Height="12"
+                      Margin="0,0,6,0"
+                      Fill="{Binding EventStatus.OverCurrentTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
+                    <TextBlock VerticalAlignment="Center" Text="OCP" />
+                  </StackPanel>
+                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                    <Ellipse
+                      Width="12"
+                      Height="12"
+                      Margin="0,0,6,0"
+                      Fill="{Binding EventStatus.FaultTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
+                    <TextBlock VerticalAlignment="Center" Text="Fault" />
+                  </StackPanel>
+                </UniformGrid>
+              </DockPanel>
+            </materialDesign:ColorZone>
+          </Grid>
+        </TabItem>
+
+        <TabItem Header="Settings">
+          <View:Settings />
+        </TabItem>
+        <TabItem Header="Data Logs">
+          <View:DataRetrievalView />
+        </TabItem>
+        <TabItem Header="App Logs">
+          <View:AppLogsView />
+        </TabItem>
+      </TabControl>
+    </DockPanel>
+  </materialDesign:DialogHost>
 </Window>

@@ -49,7 +49,10 @@ namespace QPX1200SPController.Converters
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            return (bool)value ? new SolidColorBrush(Colors.LightGreen) : new SolidColorBrush(Colors.LightGray);
+            // Soft Material-style fills for digital meter cards
+            return (bool)value
+                ? new SolidColorBrush(Color.FromRgb(0xC8, 0xE6, 0xC9))
+                : new SolidColorBrush(Color.FromRgb(0xEE, 0xEE, 0xEE));
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

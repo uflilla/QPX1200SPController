@@ -58,6 +58,8 @@ namespace QPX1200SPController.Helpers
 
         private void ConfigureAxes()
         {
+            _plot.Plot.FigureBackground.Color = Color.FromHex("#FAFAFA");
+            _plot.Plot.DataBackground.Color = Color.FromHex("#FFFFFF");
             _plot.Plot.Title(_title);
             _plot.Plot.Axes.Left.Label.Text = _yLabel;
             _plot.Plot.Axes.Bottom.Label.Text = "Time";
