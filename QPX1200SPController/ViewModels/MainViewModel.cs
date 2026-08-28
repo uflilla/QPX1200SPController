@@ -23,7 +23,7 @@ namespace QPX1200SPController.ViewModels
         private readonly LiveTelemetryBuffer _telemetryBuffer = new LiveTelemetryBuffer();
         private uint skipCounter;
         private PowerSupplyStatus _status;
-        private string _ipAddress = "170.170.170.120";
+        private string _ipAddress = "170.170.170.220";
         private double _setVoltage = 12.0;
         private double _setCurrent = 1.0;
         private string _connectionStatus = "Disconnected";
@@ -111,6 +111,16 @@ namespace QPX1200SPController.ViewModels
             IsControlPanelVisible ? "Hide Controls" : "Show Controls";
 
         public IReadOnlyList<GraphTimeWindowOption> GraphTimeWindows { get; } = CreateGraphTimeWindows();
+
+        public IReadOnlyList<string> YAxisScaleModes { get; } = new[]
+        {
+            PlotYAxisSettings.AutoMode,
+            PlotYAxisSettings.ManualMode
+        };
+
+        public PlotYAxisSettings VoltageYAxis { get; } = new PlotYAxisSettings(0, 60);
+        public PlotYAxisSettings CurrentYAxis { get; } = new PlotYAxisSettings(0, 50);
+        public PlotYAxisSettings PowerYAxis { get; } = new PlotYAxisSettings(0, 1200);
 
         public GraphTimeWindowOption SelectedGraphTimeWindow
         {
@@ -256,6 +266,9 @@ namespace QPX1200SPController.ViewModels
             _databaseService = databaseService;
             Status = new PowerSupplyStatus();
             _selectedGraphTimeWindow = GraphTimeWindows[2]; // 15 min
+            AttachYAxisSettings(VoltageYAxis);
+            AttachYAxisSettings(CurrentYAxis);
+            AttachYAxisSettings(PowerYAxis);
 
             ConnectCommand = new RelayCommand(async _ => await Connect());
             DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => IsConnected && IsInConfigMode);
@@ -278,6 +291,11 @@ namespace QPX1200SPController.ViewModels
                 Interval = TimeSpan.FromSeconds(5)
             };
             _loggingTimer.Tick += async (s, e) => await LogData();
+        }
+
+        private void AttachYAxisSettings(PlotYAxisSettings settings)
+        {
+            settings.PropertyChanged += (_, __) => GraphDataUpdated?.Invoke();
         }
 
         public TelemetrySample[] GetGraphSamples()

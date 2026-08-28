@@ -60,14 +60,14 @@ namespace QPX1200SPController
             if (_voltagePresenter == null)
             {
                 _voltagePresenter = new LivePlotPresenter(
-                    VoltagePlot, "Voltage", "V",
-                    s => s.Voltage, Colors.OrangeRed);
+                    VoltagePlot, "Voltage", "V", "V", "F3",
+                    s => s.Voltage, Colors.OrangeRed, _viewModel.VoltageYAxis);
                 _currentPresenter = new LivePlotPresenter(
-                    CurrentPlot, "Current", "A",
-                    s => s.Current, Colors.DodgerBlue);
+                    CurrentPlot, "Current", "A", "A", "F3",
+                    s => s.Current, Colors.DodgerBlue, _viewModel.CurrentYAxis);
                 _powerPresenter = new LivePlotPresenter(
-                    PowerPlot, "Power", "W",
-                    s => s.Power, Colors.ForestGreen);
+                    PowerPlot, "Power", "W", "W", "F2",
+                    s => s.Power, Colors.ForestGreen, _viewModel.PowerYAxis);
 
                 _viewModel.GraphDataUpdated += OnGraphDataUpdated;
             }
@@ -144,6 +144,9 @@ namespace QPX1200SPController
             {
                 _viewModel.GraphDataUpdated -= OnGraphDataUpdated;
                 _viewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+                _voltagePresenter?.Dispose();
+                _currentPresenter?.Dispose();
+                _powerPresenter?.Dispose();
                 _viewModel.OnClosingWindow(this, e);
             }
         }

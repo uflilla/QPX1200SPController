@@ -22,10 +22,49 @@
   WindowStartupLocation="CenterScreen"
   mc:Ignorable="d">
 
+  <Window.Resources>
+    <Style
+      x:Key="CompactRaisedButton"
+      BasedOn="{StaticResource MaterialDesignRaisedButton}"
+      TargetType="Button">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style
+      x:Key="CompactOutlinedButton"
+      BasedOn="{StaticResource MaterialDesignOutlinedButton}"
+      TargetType="Button">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style
+      x:Key="CompactTextBox"
+      BasedOn="{StaticResource MaterialDesignTextBox}"
+      TargetType="TextBox">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style
+      x:Key="CompactTabItem"
+      BasedOn="{StaticResource MaterialDesignTabItem}"
+      TargetType="TabItem">
+      <Setter Property="Padding" Value="14,4" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+  </Window.Resources>
+
   <materialDesign:DialogHost Identifier="RootDialog">
     <DockPanel>
       <materialDesign:ColorZone
-        Padding="16,10"
+        Padding="8,4"
         materialDesign:ElevationAssist.Elevation="Dp2"
         DockPanel.Dock="Top"
         Mode="PrimaryMid">
@@ -35,26 +74,28 @@
             DockPanel.Dock="Left"
             Orientation="Horizontal">
             <materialDesign:PackIcon
-              Width="28"
-              Height="28"
+              Width="20"
+              Height="20"
               VerticalAlignment="Center"
               Kind="Flash" />
             <TextBlock
-              Margin="10,0,0,0"
+              Margin="8,0,0,0"
               VerticalAlignment="Center"
-              FontSize="18"
+              FontSize="14"
               FontWeight="SemiBold"
               Text="QPX1200SP" />
             <TextBlock
               Margin="8,0,0,0"
               VerticalAlignment="Center"
+              FontSize="12"
               Opacity="0.85"
               Text="Monitoring &amp; Control" />
           </StackPanel>
           <TextBlock
-            Margin="16,0,0,0"
+            Margin="12,0,0,0"
             VerticalAlignment="Center"
             DockPanel.Dock="Right"
+            FontSize="12"
             FontWeight="SemiBold"
             Text="{Binding ConnectionStatus}">
             <TextBlock.Style>
@@ -72,8 +113,10 @@
       </materialDesign:ColorZone>
 
       <TabControl
-        Style="{StaticResource MaterialDesignTabControl}"
-        materialDesign:ColorZoneAssist.Mode="Standard">
+        Padding="0"
+        ItemContainerStyle="{StaticResource CompactTabItem}"
+        materialDesign:ColorZoneAssist.Mode="Standard"
+        Style="{StaticResource MaterialDesignTabControl}">
         <TabItem Header="Monitoring &amp; Control">
           <Grid>
             <Grid.RowDefinitions>
@@ -85,8 +128,8 @@
             <!--  Connection bar  -->
             <materialDesign:Card
               Grid.Row="0"
-              Margin="12,12,12,8"
-              Padding="12,10"
+              Margin="8,6,8,4"
+              Padding="8,4"
               materialDesign:ElevationAssist.Elevation="Dp2">
               <Grid>
                 <Grid.ColumnDefinitions>
@@ -96,19 +139,21 @@
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <TextBlock
                   Grid.Column="0"
                   Margin="0,0,8,0"
                   VerticalAlignment="Center"
-                  Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
+                  FontSize="12"
+                  FontWeight="SemiBold"
                   Text="IP Address" />
                 <TextBox
                   Grid.Column="1"
                   Margin="0,0,8,0"
                   VerticalAlignment="Center"
-                  Style="{StaticResource MaterialDesignTextBox}"
+                  Style="{StaticResource CompactTextBox}"
                   Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
                 <Button
                   Grid.Column="2"
@@ -116,37 +161,54 @@
                   Command="{Binding ConnectCommand}"
                   Content="CONNECT"
                   IsEnabled="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}"
-                  Style="{StaticResource MaterialDesignRaisedButton}" />
+                  Style="{StaticResource CompactRaisedButton}" />
                 <Button
                   Grid.Column="3"
                   Margin="0,0,6,0"
                   Command="{Binding DisconnectCommand}"
                   Content="DISCONNECT"
-                  Style="{StaticResource MaterialDesignOutlinedButton}" />
-                <Button
-                  Grid.Column="4"
-                  Margin="0,0,8,0"
-                  Command="{Binding ToggleControlPanelCommand}"
-                  Style="{StaticResource MaterialDesignOutlinedButton}"
-                  ToolTip="{Binding ControlPanelToggleText}">
-                  <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon
-                      Width="18"
-                      Height="18"
-                      Margin="0,0,6,0"
-                      VerticalAlignment="Center"
-                      Kind="ViewDashboardOutline" />
-                    <TextBlock VerticalAlignment="Center" Text="{Binding ControlPanelToggleText}" />
-                  </StackPanel>
-                </Button>
+                  Style="{StaticResource CompactOutlinedButton}" />
+                <StackPanel Grid.Column="6" Orientation="Horizontal">
+                  <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Text="OUTPUT:" />
+                  <TextBlock
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    FontWeight="Bold"
+                    Foreground="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToForegroundConverter}}"
+                    Text="{Binding Status.OutputEnabled, Converter={StaticResource BoolToOnOffConverter}}" />
+                </StackPanel>
+
                 <TextBlock
                   Grid.Column="5"
                   Margin="8,0,0,0"
                   VerticalAlignment="Center"
+                  FontSize="12"
                   Opacity="0.8"
                   Text="{Binding SupplyName, TargetNullValue='---'}"
                   TextTrimming="CharacterEllipsis"
                   ToolTip="{Binding SupplyName}" />
+                <Button
+                  Grid.Column="4"
+                  Margin="0,0,8,0"
+                  HorizontalAlignment="Right"
+                  Command="{Binding ToggleControlPanelCommand}"
+                  Style="{StaticResource CompactOutlinedButton}"
+                  ToolTip="{Binding ControlPanelToggleText}">
+                  <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon
+                      Width="16"
+                      Height="16"
+                      Margin="0,0,4,0"
+                      VerticalAlignment="Center"
+                      Kind="ViewDashboardOutline" />
+                    <TextBlock VerticalAlignment="Center" FontSize="12" Text="{Binding ControlPanelToggleText}" />
+                  </StackPanel>
+                </Button>
               </Grid>
             </materialDesign:Card>
 
@@ -156,11 +218,20 @@
               Grid.Row="1"
               Margin="8,0,8,8">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="DigitalColumn" Width="*" MinWidth="150" />
+                <ColumnDefinition
+                  x:Name="DigitalColumn"
+                  Width="*"
+                  MinWidth="150" />
                 <ColumnDefinition Width="6" />
-                <ColumnDefinition x:Name="GraphColumn" Width="*" MinWidth="200" />
+                <ColumnDefinition
+                  x:Name="GraphColumn"
+                  Width="*"
+                  MinWidth="200" />
                 <ColumnDefinition x:Name="ControlSplitterColumn" Width="6" />
-                <ColumnDefinition x:Name="ControlColumn" Width="300" MinWidth="180" />
+                <ColumnDefinition
+                  x:Name="ControlColumn"
+                  Width="300"
+                  MinWidth="180" />
               </Grid.ColumnDefinitions>
 
               <!--  Digital values  -->
@@ -361,21 +432,204 @@
                     Margin="0,2"
                     Background="{DynamicResource MaterialDesignCardBackground}"
                     CornerRadius="4">
-                    <scottPlot:WpfPlot x:Name="VoltagePlot" />
+                    <Grid>
+                      <scottPlot:WpfPlot x:Name="VoltagePlot" />
+                      <Border
+                        Margin="0,6,8,0"
+                        Padding="6,2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Panel.ZIndex="1"
+                        Background="#F2FFFFFF"
+                        BorderBrush="#33000000"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Opacity="0.75"
+                            Text="Y:" />
+                          <ComboBox
+                            Width="86"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            ItemsSource="{Binding YAxisScaleModes}"
+                            SelectedItem="{Binding VoltageYAxis.Mode}"
+                            Style="{StaticResource MaterialDesignComboBox}" />
+                          <StackPanel
+                            Margin="6,0,0,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding VoltageYAxis.IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock
+                              Margin="0,0,4,0"
+                              VerticalAlignment="Center"
+                              FontSize="11"
+                              Opacity="0.75"
+                              Text="Lower" />
+                            <xceed:DoubleUpDown
+                              Width="70"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              FormatString="F2"
+                              Increment="0.1"
+                              ToolTip="Y-axis lower value"
+                              Value="{Binding VoltageYAxis.YMin, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock
+                              Margin="6,0,4,0"
+                              VerticalAlignment="Center"
+                              FontSize="11"
+                              Opacity="0.75"
+                              Text="Upper" />
+                            <xceed:DoubleUpDown
+                              Width="70"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              FormatString="F2"
+                              Increment="0.1"
+                              ToolTip="Y-axis upper value"
+                              Value="{Binding VoltageYAxis.YMax, UpdateSourceTrigger=PropertyChanged}" />
+                          </StackPanel>
+                        </StackPanel>
+                      </Border>
+                    </Grid>
                   </Border>
                   <Border
                     Grid.Row="2"
                     Margin="0,2"
                     Background="{DynamicResource MaterialDesignCardBackground}"
                     CornerRadius="4">
-                    <scottPlot:WpfPlot x:Name="CurrentPlot" />
+                    <Grid>
+                      <scottPlot:WpfPlot x:Name="CurrentPlot" />
+                      <Border
+                        Margin="0,6,8,0"
+                        Padding="6,2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Panel.ZIndex="1"
+                        Background="#F2FFFFFF"
+                        BorderBrush="#33000000"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Opacity="0.75"
+                            Text="Y:" />
+                          <ComboBox
+                            Width="86"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            ItemsSource="{Binding YAxisScaleModes}"
+                            SelectedItem="{Binding CurrentYAxis.Mode}"
+                            Style="{StaticResource MaterialDesignComboBox}" />
+                          <StackPanel
+                            Margin="6,0,0,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding CurrentYAxis.IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock
+                              Margin="0,0,4,0"
+                              VerticalAlignment="Center"
+                              FontSize="11"
+                              Opacity="0.75"
+                              Text="Lower" />
+                            <xceed:DoubleUpDown
+                              Width="70"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              FormatString="F2"
+                              Increment="0.1"
+                              ToolTip="Y-axis lower value"
+                              Value="{Binding CurrentYAxis.YMin, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock
+                              Margin="6,0,4,0"
+                              VerticalAlignment="Center"
+                              FontSize="11"
+                              Opacity="0.75"
+                              Text="Upper" />
+                            <xceed:DoubleUpDown
+                              Width="70"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              FormatString="F2"
+                              Increment="0.1"
+                              ToolTip="Y-axis upper value"
+                              Value="{Binding CurrentYAxis.YMax, UpdateSourceTrigger=PropertyChanged}" />
+                          </StackPanel>
+                        </StackPanel>
+                      </Border>
+                    </Grid>
                   </Border>
                   <Border
                     Grid.Row="3"
                     Margin="0,2"
                     Background="{DynamicResource MaterialDesignCardBackground}"
                     CornerRadius="4">
-                    <scottPlot:WpfPlot x:Name="PowerPlot" />
+                    <Grid>
+                      <scottPlot:WpfPlot x:Name="PowerPlot" />
+                      <Border
+                        Margin="0,6,8,0"
+                        Padding="6,2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Panel.ZIndex="1"
+                        Background="#F2FFFFFF"
+                        BorderBrush="#33000000"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Opacity="0.75"
+                            Text="Y:" />
+                          <ComboBox
+                            Width="86"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            ItemsSource="{Binding YAxisScaleModes}"
+                            SelectedItem="{Binding PowerYAxis.Mode}"
+                            Style="{StaticResource MaterialDesignComboBox}" />
+                          <StackPanel
+                            Margin="6,0,0,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding PowerYAxis.IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock
+                              Margin="0,0,4,0"
+                              VerticalAlignment="Center"
+                              FontSize="11"
+                              Opacity="0.75"
+                              Text="Lower" />
+                            <xceed:DoubleUpDown
+                              Width="70"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              FormatString="F2"
+                              Increment="1"
+                              ToolTip="Y-axis lower value"
+                              Value="{Binding PowerYAxis.YMin, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock
+                              Margin="6,0,4,0"
+                              VerticalAlignment="Center"
+                              FontSize="11"
+                              Opacity="0.75"
+                              Text="Upper" />
+                            <xceed:DoubleUpDown
+                              Width="70"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              FormatString="F2"
+                              Increment="1"
+                              ToolTip="Y-axis upper value"
+                              Value="{Binding PowerYAxis.YMax, UpdateSourceTrigger=PropertyChanged}" />
+                          </StackPanel>
+                        </StackPanel>
+                      </Border>
+                    </Grid>
                   </Border>
                 </Grid>
               </materialDesign:Card>
@@ -601,23 +855,10 @@
                       <Grid>
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal">
-                          <TextBlock
-                            VerticalAlignment="Center"
-                            FontWeight="SemiBold"
-                            Text="Output:" />
-                          <TextBlock
-                            Margin="10,0,0,0"
-                            VerticalAlignment="Center"
-                            FontSize="16"
-                            FontWeight="Bold"
-                            Foreground="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToForegroundConverter}}"
-                            Text="{Binding Status.OutputEnabled, Converter={StaticResource BoolToOnOffConverter}}" />
-                        </StackPanel>
+
                         <Button
-                          Grid.Column="1"
+                          Grid.Column="0"
                           MinWidth="110"
                           Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonBackgroundConverter}}"
                           Command="{Binding ToggleOutputCommand}"
