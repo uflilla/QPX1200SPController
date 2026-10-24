@@ -166,6 +166,10 @@
     <Compile Include="Services\DatabaseService.cs" />
     <Compile Include="Services\LoggingService.cs" />
     <Compile Include="Services\PowerSupplyService.cs" />
+    <Compile Include="Services\TraceService.cs" />
+    <Compile Include="Views\ExitDialog.xaml.cs">
+      <DependentUpon>ExitDialog.xaml</DependentUpon>
+    </Compile>
     <Compile Include="ViewModels\AppLogsViewModel.cs" />
     <Compile Include="ViewModels\DataRetrievalViewModel.cs" />
     <Compile Include="ViewModels\LogViewModel.cs" />
@@ -199,6 +203,10 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Views\ExitDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Views\AppLogsView.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

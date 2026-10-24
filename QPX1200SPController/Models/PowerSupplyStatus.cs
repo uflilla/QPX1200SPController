@@ -14,6 +14,7 @@ namespace QPX1200SPController.Models
         public bool OutputEnabled { get; set; }
         public string ConnectionStatus { get; set; }
         public EventStatus EventStatus { get; set; }
+        public DateTime Timestamp { get; set; }
         public string Time { get; set; }
     }
 

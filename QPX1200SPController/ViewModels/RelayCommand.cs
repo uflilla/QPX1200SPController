@@ -46,6 +46,11 @@ namespace QPX1200SPController.ViewModels
             {
                 await _executeAsync(parameter);
             }
+            catch (Exception ex)
+            {
+                // async void: an escaping exception would otherwise reach the dispatcher.
+                Services.LoggingService.Instance.LogException(ex, nameof(RelayCommand), nameof(Execute));
+            }
             finally
             {
                 _isExecuting = false;

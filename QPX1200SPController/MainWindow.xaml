@@ -102,8 +102,11 @@
               <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="#FFCDD2" />
                 <Style.Triggers>
-                  <DataTrigger Binding="{Binding ConnectionStatus}" Value="Connected">
+                  <DataTrigger Binding="{Binding IsConnected}" Value="True">
                     <Setter Property="Foreground" Value="#C8E6C9" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding IsReconnecting}" Value="True">
+                    <Setter Property="Foreground" Value="#FFE082" />
                   </DataTrigger>
                 </Style.Triggers>
               </Style>
@@ -162,12 +165,29 @@
                   Content="CONNECT"
                   IsEnabled="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}"
                   Style="{StaticResource CompactRaisedButton}" />
-                <Button
-                  Grid.Column="3"
-                  Margin="0,0,6,0"
-                  Command="{Binding DisconnectCommand}"
-                  Content="DISCONNECT"
-                  Style="{StaticResource CompactOutlinedButton}" />
+                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                  <Button
+                    Margin="0,0,12,0"
+                    Command="{Binding DisconnectCommand}"
+                    Content="DISCONNECT"
+                    Style="{StaticResource CompactOutlinedButton}" />
+                  <TextBlock
+                    Margin="0,0,6,0"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Text="Sample rate" />
+                  <ComboBox
+                    Width="80"
+                    Margin="0,0,12,0"
+                    VerticalAlignment="Center"
+                    DisplayMemberPath="DisplayName"
+                    FontSize="12"
+                    ItemsSource="{Binding SampleRates}"
+                    SelectedItem="{Binding SelectedSampleRate}"
+                    Style="{StaticResource MaterialDesignComboBox}"
+                    ToolTip="How often the supply is read and logged to the database" />
+                </StackPanel>
                 <StackPanel Grid.Column="6" Orientation="Horizontal">
                   <TextBlock
                     VerticalAlignment="Center"
@@ -779,8 +799,17 @@
                           <Button
                             Grid.Column="2"
                             Command="{Binding SetOvpCommand}"
-                            Content="SET"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                            Content="SET">
+                            <Button.Style>
+                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding IsOvpValid}" Value="False">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </Button.Style>
+                          </Button>
                         </Grid>
                       </StackPanel>
                     </materialDesign:Card>
@@ -815,8 +844,17 @@
                           <Button
                             Grid.Column="2"
                             Command="{Binding SetOcpCommand}"
-                            Content="SET"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                            Content="SET">
+                            <Button.Style>
+                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+                                <Style.Triggers>
+                                  <DataTrigger Binding="{Binding IsOcpValid}" Value="False">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                  </DataTrigger>
+                                </Style.Triggers>
+                              </Style>
+                            </Button.Style>
+                          </Button>
                         </Grid>
                       </StackPanel>
                     </materialDesign:Card>

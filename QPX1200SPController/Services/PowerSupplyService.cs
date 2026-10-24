@@ -1,75 +1,648 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using QPX1200SPController.Models;
 
 namespace QPX1200SPController.Services
 {
+    public enum ConnectionState
+    {
+        Disconnected,
+        Connecting,
+        Connected,
+        Reconnecting
+    }
+
+    /// <summary>
+    /// SCPI-over-TCP transport for the QPX1200SP.
+    /// All traffic is serialised through one lock, every network operation has a timeout,
+    /// numbers are always formatted/parsed with the invariant culture, and a lost link is
+    /// re-established automatically until the user disconnects.
+    /// </summary>
     public class PowerSupplyService
     {
-        private const int ResponseTimeoutMs = 5000;
-        private string ipAddress;
-        private int port = 9221; // Default SCPI port for many instruments
-        private TcpClient client;
-        private NetworkStream stream;
-        private string _rxRemainder = string.Empty;
+        public const int DefaultPort = 9221;
+
+        private const int ConnectTimeoutMs = 5000;
+        private const int WriteTimeoutMs = 2000;
+        private const int ResponseTimeoutMs = 3000;
+        private const int CommandLockTimeoutMs = ConnectTimeoutMs + 1000;
+        private const int MaxConsecutiveProtocolErrors = 3;
+        private static readonly int[] ReconnectDelaysMs = { 1000, 2000, 5000, 10000 };
+        private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+        private readonly SemaphoreSlim _ioLock = new SemaphoreSlim(1, 1);
+        private readonly object _stateLock = new object();
         private readonly EventStatus _latchedEventStatus = new EventStatus();
-        private bool _isBusy;
 
-        public bool IsConnected => client != null && client.Connected;
+        private TcpClient _client;
+        private NetworkStream _stream;
+        private string _rxRemainder = string.Empty;
+        private int _connectionGeneration;
+        private int _consecutiveProtocolErrors;
+        private volatile bool _autoReconnect;
+        private CancellationTokenSource _reconnectCts;
+        private volatile ConnectionState _state = ConnectionState.Disconnected;
 
-        public async Task<bool> ConnectAsync(string ipAddress, int port = 9221)
+        /// <summary>
+        /// Raised whenever the connection state changes (and on every reconnect attempt).
+        /// May be raised on any thread; handlers must not block.
+        /// </summary>
+        public event Action<ConnectionState> ConnectionStateChanged;
+
+        public ConnectionState State => _state;
+        public bool IsConnected => _state == ConnectionState.Connected;
+        public string IpAddress { get; private set; }
+        public int Port { get; private set; } = DefaultPort;
+        public int ReconnectAttempt { get; private set; }
+        public string LastFaultReason { get; private set; }
+
+        #region Connection management
+
+        public async Task<bool> ConnectAsync(string ipAddress, int port = DefaultPort)
         {
+            _autoReconnect = false;
+            StopReconnect();
+
+            await _ioLock.WaitAsync();
             try
             {
-                this.ipAddress = ipAddress;
-                this.port = port;
+                CloseSocket();
+                IpAddress = ipAddress?.Trim();
+                Port = port;
+                SetState(ConnectionState.Connecting);
 
-                Disconnect();
-                client = new TcpClient();
-                await client.ConnectAsync(ipAddress, port);
-                stream = client.GetStream();
-                _rxRemainder = string.Empty;
+                if (!await OpenSocketAsync(logFailureAsError: true))
+                {
+                    SetState(ConnectionState.Disconnected);
+                    return false;
+                }
+
                 ResetLatchedEventStatus();
-                return client.Connected;
+                _consecutiveProtocolErrors = 0;
+                ReconnectAttempt = 0;
+                _autoReconnect = true;
+                LoggingService.Instance.LogInfo($"Connected to {IpAddress}:{Port}.", nameof(PowerSupplyService), nameof(ConnectAsync));
+                SetState(ConnectionState.Connected);
+                return true;
+            }
+            finally
+            {
+                _ioLock.Release();
+            }
+        }
+
+        /// <summary>User-initiated disconnect: closes the link and stops any reconnect attempts.</summary>
+        public void Disconnect()
+        {
+            _autoReconnect = false;
+            StopReconnect();
+            CloseSocket();
+            ResetLatchedEventStatus();
+            if (_state != ConnectionState.Disconnected)
+                LoggingService.Instance.LogInfo("Disconnected by user.", nameof(PowerSupplyService), nameof(Disconnect));
+            SetState(ConnectionState.Disconnected);
+        }
+
+        /// <summary>Opens a new socket. Caller must hold <see cref="_ioLock"/>.</summary>
+        private async Task<bool> OpenSocketAsync(bool logFailureAsError)
+        {
+            var client = new TcpClient { NoDelay = true };
+            try
+            {
+                var connectTask = client.ConnectAsync(IpAddress, Port);
+                await WithTimeout(connectTask, ConnectTimeoutMs, $"connection to {IpAddress}:{Port}");
+                client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
+                lock (_stateLock)
+                {
+                    _client = client;
+                    _stream = client.GetStream();
+                    _rxRemainder = string.Empty;
+                    _connectionGeneration++;
+                }
+
+                TraceService.Instance.Write("--", $"connected to {IpAddress}:{Port}");
+                return true;
             }
             catch (Exception ex)
             {
-                Disconnect();
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(ConnectAsync));
+                client.Close();
+                LastFaultReason = ex.Message;
+                TraceService.Instance.Write("!!", $"connect to {IpAddress}:{Port} failed: {ex.Message}");
+                string message = $"Could not connect to {IpAddress}:{Port}: {ex.Message}";
+                if (logFailureAsError)
+                    LoggingService.Instance.LogError(message, nameof(PowerSupplyService), nameof(OpenSocketAsync));
+                else
+                    LoggingService.Instance.LogWarning(message, nameof(PowerSupplyService), nameof(OpenSocketAsync));
                 return false;
             }
         }
 
-        public void Disconnect()
+        private void CloseSocket()
         {
+            TcpClient client;
+            NetworkStream stream;
+            lock (_stateLock)
+            {
+                client = _client;
+                stream = _stream;
+                _client = null;
+                _stream = null;
+                _rxRemainder = string.Empty;
+                // Any operation still running on the old socket is now stale and must not
+                // trigger fault handling for a newer connection.
+                _connectionGeneration++;
+            }
+
+            if (client == null)
+                return;
+
             try
             {
                 stream?.Close();
-                client?.Close();
+                client.Close();
             }
             catch (Exception ex)
             {
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(Disconnect));
+                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(CloseSocket));
             }
-            finally
+            TraceService.Instance.Write("--", "socket closed");
+        }
+
+        private void HandleConnectionFault(int generation, string reason)
+        {
+            lock (_stateLock)
             {
-                client = null;
-                stream = null;
-                _rxRemainder = string.Empty;
-                _isBusy = false;
-                ResetLatchedEventStatus();
+                if (generation != _connectionGeneration)
+                    return;
+            }
+
+            CloseSocket();
+            LastFaultReason = reason;
+
+            if (_autoReconnect)
+            {
+                LoggingService.Instance.LogWarning($"Connection to power supply lost ({reason}). Reconnecting...",
+                    nameof(PowerSupplyService), nameof(HandleConnectionFault));
+                StartReconnect();
+            }
+            else
+            {
+                SetState(ConnectionState.Disconnected);
             }
         }
 
+        private void StartReconnect()
+        {
+            StopReconnect();
+            var cts = new CancellationTokenSource();
+            _reconnectCts = cts;
+            ReconnectAttempt = 0;
+            SetState(ConnectionState.Reconnecting);
+            _ = ReconnectLoopAsync(cts.Token);
+        }
+
+        private void StopReconnect()
+        {
+            var cts = _reconnectCts;
+            _reconnectCts = null;
+            if (cts == null)
+                return;
+            cts.Cancel();
+            cts.Dispose();
+        }
+
+        private async Task ReconnectLoopAsync(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    int delay = ReconnectDelaysMs[Math.Min(ReconnectAttempt, ReconnectDelaysMs.Length - 1)];
+                    await Task.Delay(delay, token);
+                    ReconnectAttempt++;
+                    SetState(ConnectionState.Reconnecting);
+
+                    bool ok;
+                    await _ioLock.WaitAsync(token);
+                    try
+                    {
+                        if (token.IsCancellationRequested)
+                            return;
+                        ok = await OpenSocketAsync(logFailureAsError: false);
+                        if (ok && token.IsCancellationRequested)
+                        {
+                            CloseSocket();
+                            return;
+                        }
+                    }
+                    finally
+                    {
+                        _ioLock.Release();
+                    }
+
+                    if (ok)
+                    {
+                        _consecutiveProtocolErrors = 0;
+                        LoggingService.Instance.LogInfo($"Reconnected to {IpAddress}:{Port} after {ReconnectAttempt} attempt(s).",
+                            nameof(PowerSupplyService), nameof(ReconnectLoopAsync));
+                        SetState(ConnectionState.Connected);
+                        return;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // user disconnected or connected manually
+            }
+            catch (ObjectDisposedException)
+            {
+                // cancellation source disposed while waiting
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(ReconnectLoopAsync));
+            }
+        }
+
+        private void SetState(ConnectionState state)
+        {
+            _state = state;
+            ConnectionStateChanged?.Invoke(state);
+        }
+
+        #endregion
+
+        #region Command transport
+
+        /// <summary>
+        /// Sends a command. Returns the response for queries, an empty string for
+        /// successful non-queries, or null if the command could not be completed.
+        /// </summary>
+        public Task<string> SendCommandAsync(string command)
+        {
+            return ExecuteAsync(command, skipIfBusy: false);
+        }
+
+        private async Task<string> ExecuteAsync(string command, bool skipIfBusy)
+        {
+            if (string.IsNullOrWhiteSpace(command) || !IsConnected)
+                return null;
+
+            // Background polls are skipped when the link is busy; user commands wait their turn.
+            if (!await _ioLock.WaitAsync(skipIfBusy ? 0 : CommandLockTimeoutMs))
+            {
+                if (!skipIfBusy)
+                    LoggingService.Instance.LogWarning($"Command '{command.Trim()}' not sent: link busy.",
+                        nameof(PowerSupplyService), nameof(ExecuteAsync));
+                return null;
+            }
+
+            try
+            {
+                return await ExecuteLockedAsync(command.Trim());
+            }
+            finally
+            {
+                _ioLock.Release();
+            }
+        }
+
+        private async Task<string> ExecuteLockedAsync(string command)
+        {
+            NetworkStream stream;
+            int generation;
+            lock (_stateLock)
+            {
+                stream = _stream;
+                generation = _connectionGeneration;
+            }
+            if (stream == null || !IsConnected)
+                return null;
+
+            bool isQuery = command.EndsWith("?");
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                byte[] data = Encoding.ASCII.GetBytes(command + "\n");
+                TraceService.Instance.Write(">>", command);
+                await WithTimeout(stream.WriteAsync(data, 0, data.Length), WriteTimeoutMs, "write");
+
+                if (command.Equals("TRIPRST", StringComparison.OrdinalIgnoreCase))
+                    ClearLatchedTrips();
+
+                if (!isQuery)
+                    return string.Empty;
+
+                string response = await ReadLinesAsync(stream, GetExpectedQueryLineCount(command), ResponseTimeoutMs);
+                TraceService.Instance.Write("<<", response, stopwatch.Elapsed);
+                return response;
+            }
+            catch (Exception ex)
+            {
+                // After a timeout or I/O error the stream position is unknown (an abandoned read
+                // may still consume the next reply), so the only safe recovery is a fresh socket.
+                TraceService.Instance.Write("!!", $"{command}: {ex.Message}", stopwatch.Elapsed);
+                LoggingService.Instance.LogWarning($"Command '{command}' failed: {ex.Message}",
+                    nameof(PowerSupplyService), nameof(ExecuteLockedAsync));
+                HandleConnectionFault(generation, ex.Message);
+                return null;
+            }
+        }
+
+        private static int GetExpectedQueryLineCount(string command)
+        {
+            var parts = command.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            int queryCount = parts.Count(p => p.TrimEnd().EndsWith("?"));
+            return Math.Max(queryCount, 1);
+        }
+
+        /// <summary>
+        /// Reads until <paramref name="expectedLines"/> complete lines are available (handles
+        /// partial TCP reads and CRLF). Leftover bytes are kept for the next read.
+        /// </summary>
+        private async Task<string> ReadLinesAsync(NetworkStream stream, int expectedLines, int timeoutMs)
+        {
+            var lines = new string[expectedLines];
+            int lineCount = 0;
+            var fragment = _rxRemainder ?? string.Empty;
+            _rxRemainder = string.Empty;
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            byte[] buffer = new byte[1024];
+
+            while (true)
+            {
+                int newlineIndex;
+                while (lineCount < expectedLines && (newlineIndex = fragment.IndexOf('\n')) >= 0)
+                {
+                    lines[lineCount++] = fragment.Substring(0, newlineIndex).TrimEnd('\r');
+                    fragment = fragment.Substring(newlineIndex + 1);
+                }
+
+                if (lineCount >= expectedLines)
+                    break;
+
+                int remainingMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                if (remainingMs <= 0)
+                    throw new TimeoutException($"No complete response within {timeoutMs} ms (got {lineCount}/{expectedLines} line(s)).");
+
+                int bytesRead = await WithTimeout(stream.ReadAsync(buffer, 0, buffer.Length), remainingMs, "response");
+                if (bytesRead == 0)
+                    throw new IOException("Connection closed by the power supply.");
+
+                fragment += Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            }
+
+            _rxRemainder = fragment;
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>
+        /// Called after an unparseable reply. Discards anything left in the receive path so the
+        /// next exchange starts clean; repeated errors force a reconnect.
+        /// </summary>
+        private async Task RegisterProtocolErrorAsync(string description, int generation)
+        {
+            _consecutiveProtocolErrors++;
+            LoggingService.Instance.LogWarning(
+                $"{description} (consecutive invalid responses: {_consecutiveProtocolErrors})",
+                nameof(PowerSupplyService), nameof(RegisterProtocolErrorAsync));
+            TraceService.Instance.Write("!!", description);
+
+            if (_consecutiveProtocolErrors >= MaxConsecutiveProtocolErrors)
+            {
+                _consecutiveProtocolErrors = 0;
+                HandleConnectionFault(generation, "repeated invalid responses");
+                return;
+            }
+
+            await _ioLock.WaitAsync();
+            try
+            {
+                NetworkStream stream;
+                lock (_stateLock)
+                {
+                    if (generation != _connectionGeneration)
+                        return;
+                    stream = _stream;
+                }
+
+                _rxRemainder = string.Empty;
+                await Task.Delay(50); // let any straggling bytes arrive
+                byte[] buffer = new byte[1024];
+                while (stream != null && stream.DataAvailable)
+                    stream.Read(buffer, 0, buffer.Length);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(RegisterProtocolErrorAsync));
+            }
+            finally
+            {
+                _ioLock.Release();
+            }
+        }
+
+        private int CurrentGeneration
+        {
+            get
+            {
+                lock (_stateLock)
+                    return _connectionGeneration;
+            }
+        }
+
+        private static async Task WithTimeout(Task task, int timeoutMs, string operation)
+        {
+            if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task)
+            {
+                Observe(task);
+                throw new TimeoutException($"Timed out after {timeoutMs} ms waiting for {operation}.");
+            }
+            await task;
+        }
+
+        private static async Task<T> WithTimeout<T>(Task<T> task, int timeoutMs, string operation)
+        {
+            if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task)
+            {
+                Observe(task);
+                throw new TimeoutException($"Timed out after {timeoutMs} ms waiting for {operation}.");
+            }
+            return await task;
+        }
+
+        /// <summary>Prevents an abandoned task's exception from surfacing as unobserved.</summary>
+        private static void Observe(Task task)
+        {
+            task.ContinueWith(t => { var _ = t.Exception; },
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+        }
+
+        #endregion
+
+        #region Queries
+
+        public Task<string> GetIdentityAsync()
+        {
+            return ExecuteAsync(PowerSupplyCommands.GetPsIdentityCommand, skipIfBusy: false);
+        }
+
+        /// <summary>Reads live output values and status. Returns null if the read failed or was skipped.</summary>
+        public async Task<PowerSupplyStatus> GetStatusAsync(bool skipIfBusy = true)
+        {
+            int generation = CurrentGeneration;
+            string response = await ExecuteAsync(PowerSupplyCommands.GetPsStatusCommand, skipIfBusy);
+            if (response == null)
+                return null;
+
+            var status = ParsePsStatus(response);
+            if (status == null)
+            {
+                await RegisterProtocolErrorAsync($"Invalid status response: '{Escape(response)}'", generation);
+                return null;
+            }
+
+            _consecutiveProtocolErrors = 0;
+            return status;
+        }
+
+        /// <summary>Reads the programmed set-points. Returns null if the read failed or was skipped.</summary>
+        public async Task<PowerSupplySettingStatus> GetPowerSupplySettingsAsync(bool skipIfBusy = false)
+        {
+            int generation = CurrentGeneration;
+            string response = await ExecuteAsync(PowerSupplyCommands.GetPsSettingStatusCommand, skipIfBusy);
+            if (response == null)
+                return null;
+
+            var settings = ParsePsSettingStatus(response);
+            if (settings == null)
+            {
+                await RegisterProtocolErrorAsync($"Invalid settings response: '{Escape(response)}'", generation);
+                return null;
+            }
+
+            _consecutiveProtocolErrors = 0;
+            return settings;
+        }
+
+        private PowerSupplyStatus ParsePsStatus(string response)
+        {
+            // V1O? -> "<NR2>V", I1O? -> "<NR2>A", OP1? -> "0|1", LSR1? -> "<NR1>"
+            var parts = SplitLines(response);
+            if (parts.Length != 4)
+                return null;
+
+            if (!TryParseWithSuffix(parts[0], "V", out double voltage)
+                || !TryParseWithSuffix(parts[1], "A", out double current)
+                || (parts[2] != "0" && parts[2] != "1"))
+                return null;
+
+            var freshEvents = ParseEventStatus(parts[3]);
+            if (freshEvents == null)
+                return null;
+
+            var now = DateTime.Now;
+            return new PowerSupplyStatus
+            {
+                Voltage = voltage,
+                Current = current,
+                Power = voltage * current,
+                OutputEnabled = parts[2] == "1",
+                EventStatus = MergeLatchedEventStatus(freshEvents),
+                ConnectionStatus = "Connected",
+                Timestamp = now,
+                Time = now.ToString("yyyy-MM-dd HH:mm:ss", Inv)
+            };
+        }
+
+        private static PowerSupplySettingStatus ParsePsSettingStatus(string response)
+        {
+            // V1? -> "V1 <NR2>", I1? -> "I1 <NR2>", OVP1? -> "VP1 <NR2>", OCP1? -> "CP1 <NR2>"
+            var parts = SplitLines(response);
+            if (parts.Length != 4)
+                return null;
+
+            if (!TryParseWithPrefix(parts[0], "V1", out double setVoltage)
+                || !TryParseWithPrefix(parts[1], "I1", out double setCurrent)
+                || !TryParseWithPrefix(parts[2], "VP1", out double ovp)
+                || !TryParseWithPrefix(parts[3], "CP1", out double ocp))
+                return null;
+
+            return new PowerSupplySettingStatus
+            {
+                SetVoltage = setVoltage,
+                SetCurrent = setCurrent,
+                SetOvpLevel = ovp,
+                SetOcpLevel = ocp
+            };
+        }
+
+        private static EventStatus ParseEventStatus(string value)
+        {
+            if (!byte.TryParse(value?.Trim(), NumberStyles.Integer, Inv, out byte register))
+                return null;
+
+            return new EventStatus
+            {
+                ConstantVoltageMode = (register >> 0) & 1,
+                ConstantCurrentMode = (register >> 1) & 1,
+                UnregulatedMode = (register >> 2) & 1,
+                OverVoltageTrip = (register >> 3) & 1,
+                OverCurrentTrip = (register >> 4) & 1,
+                OutputSenseTrip = (register >> 5) & 1,
+                FaultTrip = (register >> 6) & 1
+            };
+        }
+
+        private static string[] SplitLines(string response)
+        {
+            return response.Split('\n').Select(p => p.Trim()).ToArray();
+        }
+
+        private static bool TryParseWithPrefix(string text, string prefix, out double value)
+        {
+            value = 0;
+            text = text?.Trim();
+            if (string.IsNullOrEmpty(text) || !text.StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase))
+                return false;
+            return TryParseNumber(text.Substring(prefix.Length), out value);
+        }
+
+        private static bool TryParseWithSuffix(string text, string suffix, out double value)
+        {
+            value = 0;
+            text = text?.Trim();
+            if (string.IsNullOrEmpty(text) || !text.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return TryParseNumber(text.Substring(0, text.Length - suffix.Length), out value);
+        }
+
+        private static bool TryParseNumber(string text, out double value)
+        {
+            return double.TryParse(text.Trim(), NumberStyles.Float, Inv, out value)
+                   && !double.IsNaN(value) && !double.IsInfinity(value);
+        }
+
+        private static string Escape(string text)
+        {
+            return text?.Replace("\r", "\\r").Replace("\n", "\\n");
+        }
+
+        #endregion
+
+        #region Event status latching
+
         /// <summary>
         /// Clears latched protection trip indicators (OVP/OCP/Sense/Fault).
-        /// Call after a successful TRIPRST (or equivalent operator acknowledge).
+        /// Called after TRIPRST is sent.
         /// </summary>
         public void ClearLatchedTrips()
         {
@@ -84,365 +657,14 @@ namespace QPX1200SPController.Services
             ClearLatchedTrips();
         }
 
-        public async Task<string> SendCommandAsync(string command)
-        {
-            if (!IsConnected)
-            {
-                var ex = new InvalidOperationException("Not connected to power supply");
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
-                return string.Empty;
-            }
-
-            try
-            {
-                byte[] data = Encoding.ASCII.GetBytes(command + "\n");
-                var count = 0;
-                if (_isBusy && (command.Equals(PowerSupplyCommands.GetPsStatusCommand) || command.Equals(PowerSupplyCommands.GetPsSettingStatusCommand)))
-                    return string.Empty;
-                while (_isBusy && count < 40)
-                {
-                    await Task.Delay(50);
-                    count++;
-                }
-                if (_isBusy)
-                {
-                    LoggingService.Instance.LogError("No Response received from Power Supply for 2 seconds. Disconnecting...", nameof(PowerSupplyService), nameof(SendCommandAsync));
-                    Disconnect();
-                    return string.Empty;
-                }
-
-                _isBusy = true;
-                Debug.WriteLine($"{DateTime.Now:HH.mm.ss.fff} >> command: {command}");
-                await stream.WriteAsync(data, 0, data.Length);
-
-                var trimmedCommand = command.Trim();
-                if (trimmedCommand.Equals("TRIPRST", StringComparison.OrdinalIgnoreCase))
-                    ClearLatchedTrips();
-
-                string response = string.Empty;
-                if (trimmedCommand.EndsWith("?"))
-                {
-                    int expectedLines = GetExpectedQueryLineCount(trimmedCommand);
-                    response = await ReadLinesAsync(expectedLines, ResponseTimeoutMs);
-                    Debug.WriteLine($"{DateTime.Now:HH.mm.ss.fff} >> Valid Response: {response}");
-                    _isBusy = false;
-                    return response;
-                }
-
-                Debug.WriteLine($"{DateTime.Now:HH.mm.ss.fff} >> Valid Response: {response}");
-                _isBusy = false;
-                return string.Empty;
-            }
-            catch (TimeoutException ex)
-            {
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
-                Disconnect();
-                return string.Empty;
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
-                try
-                {
-                    FlushReceiveBuffer();
-                }
-                catch
-                {
-                    // ignored — disconnect path handles cleanup
-                }
-                _isBusy = false;
-                return string.Empty;
-            }
-        }
-
-        private static int GetExpectedQueryLineCount(string command)
-        {
-            var parts = command.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-            int queryCount = parts.Count(p => p.TrimEnd().EndsWith("?"));
-            return Math.Max(queryCount, 1);
-        }
-
-        /// <summary>
-        /// Reads from the TCP stream until <paramref name="expectedLines"/> complete lines
-        /// are available (handles partial TCP reads and CRLF). Leftover bytes are kept for the next read.
-        /// </summary>
-        private async Task<string> ReadLinesAsync(int expectedLines, int timeoutMs)
-        {
-            var lines = new List<string>();
-            var fragment = _rxRemainder ?? string.Empty;
-            _rxRemainder = string.Empty;
-            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-            byte[] buffer = new byte[1024];
-
-            while (lines.Count < expectedLines)
-            {
-                int newlineIndex;
-                while (lines.Count < expectedLines && (newlineIndex = fragment.IndexOf('\n')) >= 0)
-                {
-                    string line = fragment.Substring(0, newlineIndex).TrimEnd('\r');
-                    fragment = fragment.Substring(newlineIndex + 1);
-                    lines.Add(line);
-                }
-
-                if (lines.Count >= expectedLines)
-                    break;
-
-                int remainingMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
-                if (remainingMs <= 0)
-                {
-                    _rxRemainder = fragment;
-                    throw new TimeoutException($"Timed out waiting for {expectedLines} SCPI response line(s).");
-                }
-
-                int bytesRead = await ReadWithTimeoutAsync(buffer, remainingMs);
-                if (bytesRead == 0)
-                    throw new IOException("Connection closed by remote host while reading SCPI response.");
-
-                fragment += Encoding.ASCII.GetString(buffer, 0, bytesRead);
-            }
-
-            _rxRemainder = fragment;
-            return string.Join("\n", lines);
-        }
-
-        private async Task<int> ReadWithTimeoutAsync(byte[] buffer, int timeoutMs)
-        {
-            var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-            var delayTask = Task.Delay(timeoutMs);
-            var completed = await Task.WhenAny(readTask, delayTask);
-            if (completed != readTask)
-                throw new TimeoutException("Timed out reading from power supply TCP stream.");
-            return await readTask;
-        }
-
-        private void FlushReceiveBuffer()
-        {
-            _rxRemainder = string.Empty;
-            if (stream == null)
-                return;
-
-            try
-            {
-                byte[] buffer = new byte[1024];
-                while (stream.DataAvailable)
-                {
-                    stream.Read(buffer, 0, buffer.Length);
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(FlushReceiveBuffer));
-            }
-        }
-
-        /*public async Task<string> SendCommandAsync(string command)
-        {
-            if (!IsConnected)
-            {
-                var ex = new InvalidOperationException("Not connected to power supply");
-                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
-                return string.Empty;
-            }
-
-            try
-            {
-                byte[] data = Encoding.ASCII.GetBytes(command + "\n");
-                await stream.WriteAsync(data, 0, data.Length);
-
-                // If command is a query (ends with ?), read response
-                if (command.TrimEnd().EndsWith("?"))
-                {
-                    // Extract the command prefix for verification (e.g., "V1" from "V1?") 
-                    string commandPrefix = ExtractCommandPrefix(command);
-                    byte[] buffer = new byte[1024];
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    string response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
-                    int retryCount = 0;
-                    const int maxRetries = 1;
-                    while (retryCount < maxRetries && !IsValidResponseForCommand(response, commandPrefix))
-                    {
-                        await Task.Delay(100);
-                        if (stream?.DataAvailable ?? false)
-                        {
-                            buffer = new byte[1024];
-                            await stream.ReadAsync(buffer, 0, buffer.Length);
-                        }
-                        await stream.WriteAsync(data, 0, data.Length);
-                        buffer = new byte[1024];
-                        bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                        response = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
-                        retryCount++;
-                    }
-                    return response;
-                }
-                return string.Empty;
-            }
-            catch (Exception ex)
-            {
-                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(SendCommandAsync));
-                return string.Empty;
-            }
-        }*/
-
-        /// <summary>
-        /// Extracts the command prefix from a query command
-        /// </summary>
-        /// <param name="command">The command string (e.g., "V1?", "OVP1?")</param>
-        /// <returns>The command prefix (e.g., "V1", "OVP1")</returns>
-        private string ExtractCommandPrefix(string command)
-        {
-            // Remove any whitespace and the question mark
-            string trimmedCommand = command.Trim();
-            if (trimmedCommand.EndsWith("?"))
-            {
-                trimmedCommand = trimmedCommand.Substring(0, trimmedCommand.Length - 1);
-            }
-            
-            // For commands with parameters, extract just the command part
-            int spaceIndex = trimmedCommand.IndexOf(' ');
-            if (spaceIndex > 0)
-            {
-                trimmedCommand = trimmedCommand.Substring(0, spaceIndex);
-            }
-            
-            return trimmedCommand;
-        }
-        
-        /// <summary>
-        /// Checks if a response is valid for a given command
-        /// </summary>
-        /// <param name="response">The response from the power supply</param>
-        /// <param name="commandPrefix">The command prefix to check against</param>
-        /// <returns>True if the response is valid for the command</returns>
-        private bool IsValidResponseForCommand(string response, string commandPrefix)
-        {
-            if (string.IsNullOrWhiteSpace(response))
-                return false;
-                
-            // For simple numeric responses, we can't verify the command
-            //if (response.Length < 3)
-            //    return true;
-                
-            // Special case for output state query
-            if (commandPrefix == "OP1" && (response == "0" || response == "1"))
-                return true;
-                
-            // Handle specific response formats based on the manual
-            switch (commandPrefix)
-            {
-                case "V1":
-                    return response.StartsWith("V1 ", StringComparison.OrdinalIgnoreCase);
-                    
-                case "I1":
-                    return response.StartsWith("I1 ", StringComparison.OrdinalIgnoreCase);
-                    
-                case "OVP1":
-                    return response.StartsWith("VP1 ", StringComparison.OrdinalIgnoreCase);
-                    
-                case "OCP1":
-                    return response.StartsWith("CP1 ", StringComparison.OrdinalIgnoreCase);
-                    
-                case "V1O":
-                    // V1O? returns <NR2>V format
-                    return response.EndsWith("V", StringComparison.OrdinalIgnoreCase);
-                    
-                case "I1O":
-                    // I1O? returns <NR2>A format
-                    return response.EndsWith("A", StringComparison.OrdinalIgnoreCase);
-                case "*IDN":
-                    // I1O? returns <NR2>A format
-                    return true;
-                default:
-                    // Fallback for other commands
-                    string altPrefix = commandPrefix.Replace("1", "P1");
-                    return response.StartsWith(commandPrefix, StringComparison.OrdinalIgnoreCase) ||
-                           response.StartsWith(altPrefix, StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        public async Task<PowerSupplyStatus> GetStatusAsync()
-        {
-            if (!IsConnected)
-            {
-                LoggingService.Instance.LogError("Disconnected", nameof(PowerSupplyService), nameof(GetStatusAsync));
-                return new PowerSupplyStatus { ConnectionStatus = "Disconnected" };
-            }
-
-            try
-            {
-                string statusResponse = await SendCommandAsync(PowerSupplyCommands.GetPsStatusCommand);
-
-                // SendCommandAsync may have disconnected on timeout/error while we were awaiting.
-                if (!IsConnected)
-                    return new PowerSupplyStatus { ConnectionStatus = "Disconnected" };
-
-                var status = ParsePsStatus(statusResponse);
-                if (status == null && !IsConnected)
-                    return new PowerSupplyStatus { ConnectionStatus = "Disconnected" };
-
-                return status;
-            }
-            catch (Exception ex)
-            {
-                Disconnect();
-                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(GetStatusAsync));
-                return new PowerSupplyStatus { ConnectionStatus = "Error" };
-            }
-        }
-
-        private PowerSupplyStatus ParsePsStatus(string statusResponse)
-        {
-            if (string.IsNullOrWhiteSpace(statusResponse))
-                return null;
-
-            var tcParts = PowerSupplyCommands.GetPsStatusCommand.Split(';');
-            var responseParts = statusResponse
-                .Split(new[] { '\n' }, StringSplitOptions.None)
-                .Select(p => p.Trim())
-                .ToArray();
-
-            if (tcParts.Length != responseParts.Length)
-            {
-                LoggingService.Instance.LogError(
-                    $"Status response line count mismatch. Expected {tcParts.Length}, got {responseParts.Length}. Flushing RX buffer.",
-                    nameof(PowerSupplyService),
-                    nameof(ParsePsStatus));
-                FlushReceiveBuffer();
-                return null;
-            }
-
-            var freshEvents = ParseEventStatus(responseParts[3]);
-            var status = new PowerSupplyStatus
-            {
-                Voltage = ParseResponseValue(responseParts[0], "V1O"),
-                Current = ParseResponseValue(responseParts[1], "I1O"),
-                OutputEnabled = responseParts[2] == "1",
-                EventStatus = MergeLatchedEventStatus(freshEvents),
-                ConnectionStatus = "Connected",
-                Time = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
-            };
-            status.Power = status.Voltage * status.Current;
-            return status;
-        }
-
         /// <summary>
         /// LSR1? clears the instrument register on every read.
-        /// Mode bits (CV/CC/Unreg) are passed through as reported this poll (same as before).
-        /// Trip bits are latched in software until TRIPRST, so brief trips remain visible.
+        /// Mode bits (CV/CC/Unreg) are passed through as reported this poll.
+        /// Trip bits are latched in software until TRIPRST, so brief trips remain visible
+        /// (latches survive an automatic reconnect).
         /// </summary>
         private EventStatus MergeLatchedEventStatus(EventStatus fresh)
         {
-            if (fresh == null)
-            {
-                return new EventStatus
-                {
-                    OverVoltageTrip = _latchedEventStatus.OverVoltageTrip,
-                    OverCurrentTrip = _latchedEventStatus.OverCurrentTrip,
-                    OutputSenseTrip = _latchedEventStatus.OutputSenseTrip,
-                    FaultTrip = _latchedEventStatus.FaultTrip
-                };
-            }
-
             if (fresh.OverVoltageTrip == 1)
                 _latchedEventStatus.OverVoltageTrip = 1;
             if (fresh.OverCurrentTrip == 1)
@@ -454,11 +676,9 @@ namespace QPX1200SPController.Services
 
             return new EventStatus
             {
-                // Live (entry-since-last-read) mode bits — do not sticky-latch
                 ConstantVoltageMode = fresh.ConstantVoltageMode,
                 ConstantCurrentMode = fresh.ConstantCurrentMode,
                 UnregulatedMode = fresh.UnregulatedMode,
-                // Latched trips until TRIPRST
                 OverVoltageTrip = _latchedEventStatus.OverVoltageTrip,
                 OverCurrentTrip = _latchedEventStatus.OverCurrentTrip,
                 OutputSenseTrip = _latchedEventStatus.OutputSenseTrip,
@@ -466,228 +686,37 @@ namespace QPX1200SPController.Services
             };
         }
 
-        private EventStatus ParseEventStatus(string responsePart)
-        {
-            if (!byte.TryParse(responsePart?.Trim(), out byte eventRegister))
-            {
-                LoggingService.Instance.LogError(
-                    $"Failed to parse LSR1 value: '{responsePart}'",
-                    nameof(PowerSupplyService),
-                    nameof(ParseEventStatus));
-                return null;
-            }
+        #endregion
 
-            var bits = Convert.ToString(eventRegister, 2).PadLeft(8, '0').Reverse().ToArray();
-            return new EventStatus
-            {
-                ConstantVoltageMode = bits[0] == '1' ? 1 : 0,
-                ConstantCurrentMode = bits[1] == '1' ? 1 : 0,
-                UnregulatedMode = bits[2] == '1' ? 1 : 0,
-                OverVoltageTrip = bits[3] == '1' ? 1 : 0,
-                OverCurrentTrip = bits[4] == '1' ? 1 : 0,
-                OutputSenseTrip = bits[5] == '1' ? 1 : 0,
-                FaultTrip = bits[6] == '1' ? 1 : 0
-            };
+        #region Set commands
+
+        public async Task<bool> SetVoltageAsync(double voltage)
+        {
+            return await SendCommandAsync("V1 " + voltage.ToString("F3", Inv)) != null;
         }
 
-        public async Task SetVoltageAsync(double voltage)
+        public async Task<bool> SetCurrentAsync(double current)
         {
-            await SendCommandAsync($"V1 {voltage:F3}");
+            return await SendCommandAsync("I1 " + current.ToString("F3", Inv)) != null;
         }
 
-        public async Task SetCurrentAsync(double current)
+        public async Task<bool> SetOutputAsync(bool enabled)
         {
-            await SendCommandAsync($"I1 {current:F3}");
+            return await SendCommandAsync(enabled ? "OP1 1" : "OP1 0") != null;
         }
 
-        public async Task SetOutputAsync(bool enabled)
+        public async Task<bool> SetOverVoltageProtectionAsync(double voltage)
         {
-            await SendCommandAsync($"OP1 {(enabled ? "1" : "0")}");
+            // The protection is always enabled on the QPX1200SP; only the level can be set.
+            return await SendCommandAsync("OVP1 " + voltage.ToString("F3", Inv)) != null;
         }
 
-        public async Task SetOverVoltageProtectionAsync(double voltage)
+        public async Task<bool> SetOverCurrentProtectionAsync(double current)
         {
-            // Set OVP level (1-65V)
-            // The protection is always enabled on QPX1200SP, only the level can be set
-            await SendCommandAsync($"OVP1 {voltage:F3}");
+            // The protection is always enabled on the QPX1200SP; only the level can be set.
+            return await SendCommandAsync("OCP1 " + current.ToString("F3", Inv)) != null;
         }
 
-        public async Task SetOverCurrentProtectionAsync(double current)
-        {
-            // Set OCP level (1-65A)
-            // The protection is always enabled on QPX1200SP, only the level can be set
-            await SendCommandAsync($"OCP1 {current:F3}");
-        }
-
-        /*public async Task<double> GetOverVoltageProtectionAsync()
-        {
-            string level = await SendCommandAsync("OVP1?");
-            return ParseResponseValue(level, "OVP1");
-        }
-
-        public async Task<double> GetOverCurrentProtectionAsync()
-        {
-            string level = await SendCommandAsync("OCP1?");
-            return ParseResponseValue(level, "OCP1");
-        }
-
-        public async Task<double> GetSetVoltageAsync()
-        {
-            // V1O? queries the set voltage value from the power supply
-            string voltage = await SendCommandAsync("V1?");
-            return ParseResponseValue(voltage, "V1");
-        }*/
-
-        public async Task<PowerSupplySettingStatus> GetPowerSupplySettingsAsync()
-        {
-            var settings = await SendCommandAsync(PowerSupplyCommands.GetPsSettingStatusCommand);
-            return ParsePsSettingStatus(settings);
-        }
-
-        private PowerSupplySettingStatus ParsePsSettingStatus(string settings)
-        {
-            if (string.IsNullOrWhiteSpace(settings))
-                return null;
-
-            var tcParts = PowerSupplyCommands.GetPsSettingStatusCommand.Split(';');
-            var responseParts = settings
-                .Split(new[] { '\n' }, StringSplitOptions.None)
-                .Select(p => p.Trim())
-                .ToArray();
-
-            if (tcParts.Length != responseParts.Length)
-            {
-                LoggingService.Instance.LogError(
-                    $"Settings response line count mismatch. Expected {tcParts.Length}, got {responseParts.Length}. Flushing RX buffer.",
-                    nameof(PowerSupplyService),
-                    nameof(ParsePsSettingStatus));
-                FlushReceiveBuffer();
-                return null;
-            }
-
-            return new PowerSupplySettingStatus
-            {
-                SetVoltage = ParseResponseValue(responseParts[0], "V1"),
-                SetCurrent = ParseResponseValue(responseParts[1], "I1"),
-                SetOvpLevel = ParseResponseValue(responseParts[2], "VP1"),
-                SetOcpLevel = ParseResponseValue(responseParts[3], "CP1")
-            };
-        }
-
-        public async Task<double> GetSetCurrentAsync()
-        {
-            // I1O? queries the set current value from the power supply
-            string current = await SendCommandAsync("I1?");
-            return ParseResponseValue(current, "I1");
-        }
-        /// <summary>
-        /// Parses a response value from the power supply, handling various formats
-        /// and verifying that the response matches the expected command.
-        /// </summary>
-        /// <param name="response">The response string from the power supply</param>
-        /// <param name="expectedPrefix">The expected command prefix (e.g., "V1", "I1", "OVP1")</param>
-        /// <returns>The parsed double value</returns>
-        private double ParseResponseValue(string response, string expectedPrefix)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(response))
-                    throw new InvalidOperationException("Empty response from power supply");
-                response = response.Trim();
-                switch (expectedPrefix)
-                {
-                    case "V1":
-                        if (response.StartsWith("V1 ", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string numericPart = response.Substring(3).Trim();
-                            if (double.TryParse(numericPart, out double result))
-                                return result;
-                        }
-                        break;
-                    case "I1":
-                        if (response.StartsWith("I1 ", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string numericPart = response.Substring(3).Trim();
-                            if (double.TryParse(numericPart, out double result))
-                                return result;
-                        }
-                        break;
-                    case "OVP1":
-                        if (response.StartsWith("VP1 ", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string numericPart = response.Substring(4).Trim();
-                            if (double.TryParse(numericPart, out double result))
-                                return result;
-                        }
-                        break;
-                    case "OCP1":
-                        if (response.StartsWith("CP1 ", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string numericPart = response.Substring(4).Trim();
-                            if (double.TryParse(numericPart, out double result))
-                                return result;
-                        }
-                        break;
-                    case "V1O":
-                        if (response.EndsWith("V", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string numericPart = response.Substring(0, response.Length - 1).Trim();
-                            if (double.TryParse(numericPart, out double result))
-                                return result;
-                        }
-                        break;
-                    case "I1O":
-                        if (response.EndsWith("A", StringComparison.OrdinalIgnoreCase))
-                        {
-                            string numericPart = response.Substring(0, response.Length - 1).Trim();
-                            if (double.TryParse(numericPart, out double result))
-                                return result;
-                        }
-                        break;
-                }
-                string genericNumericPart = "";
-                bool decimalPointFound = false;
-                if (response.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
-                    response.StartsWith(expectedPrefix.Replace("1", "P1"), StringComparison.OrdinalIgnoreCase))
-                {
-                    int prefixEndIndex = response.IndexOf(' ');
-                    if (prefixEndIndex > 0 && prefixEndIndex < response.Length - 1)
-                    {
-                        response = response.Substring(prefixEndIndex).Trim();
-                    }
-                }
-                foreach (char c in response)
-                {
-                    if (char.IsDigit(c))
-                    {
-                        genericNumericPart += c;
-                    }
-                    else if (c == '.' && !decimalPointFound)
-                    {
-                        genericNumericPart += c;
-                        decimalPointFound = true;
-                    }
-                    else if ((c == '-' || c == '+') && genericNumericPart.Length == 0)
-                    {
-                        genericNumericPart += c;
-                    }
-                    else if (char.IsLetter(c) || c == 'V' || c == 'A')
-                    {
-                        break;
-                    }
-                }
-                if (string.IsNullOrWhiteSpace(genericNumericPart))
-                    throw new FormatException($"Could not extract numeric value from response: {response}");
-                if (double.TryParse(genericNumericPart, out double genericResult))
-                    return genericResult;
-                else
-                    throw new FormatException($"Failed to parse numeric value: {genericNumericPart} from response: {response}");
-            }
-            catch (Exception ex)
-            {
-                QPX1200SPController.Services.LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(ParseResponseValue));
-                return 0.0;
-            }
-        }
+        #endregion
     }
 }

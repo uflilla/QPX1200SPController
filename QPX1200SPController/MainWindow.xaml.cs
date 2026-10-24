@@ -17,6 +17,8 @@ namespace QPX1200SPController
         private LivePlotPresenter _currentPresenter;
         private LivePlotPresenter _powerPresenter;
         private GridLength _savedControlWidth = new GridLength(DefaultControlWidth);
+        private bool _closeConfirmed;
+        private bool _closeInProgress;
 
         public MainWindow()
         {
@@ -138,17 +140,49 @@ namespace QPX1200SPController
             _powerPresenter.Update(samples);
         }
 
-        private void MainWindow_Closing(object sender, CancelEventArgs e)
+        private async void MainWindow_Closing(object sender, CancelEventArgs e)
+        {
+            if (_closeConfirmed || _viewModel == null)
+            {
+                ReleasePlots();
+                return;
+            }
+
+            // Closing is synchronous, so cancel it, run the async exit sequence, then close again.
+            e.Cancel = true;
+            if (_closeInProgress)
+                return;
+
+            _closeInProgress = true;
+            try
+            {
+                if (!await _viewModel.PrepareShutdownAsync(this))
+                    return;
+            }
+            catch (Exception ex)
+            {
+                Services.LoggingService.Instance.LogException(ex, nameof(MainWindow), nameof(MainWindow_Closing));
+            }
+            finally
+            {
+                _closeInProgress = false;
+            }
+
+            _closeConfirmed = true;
+            // Close() cannot be called from inside a Closing handler, so queue it.
+            _ = Dispatcher.BeginInvoke(new Action(Close));
+        }
+
+        private void ReleasePlots()
         {
             if (_viewModel != null)
             {
                 _viewModel.GraphDataUpdated -= OnGraphDataUpdated;
                 _viewModel.PropertyChanged -= ViewModelOnPropertyChanged;
-                _voltagePresenter?.Dispose();
-                _currentPresenter?.Dispose();
-                _powerPresenter?.Dispose();
-                _viewModel.OnClosingWindow(this, e);
             }
+            _voltagePresenter?.Dispose();
+            _currentPresenter?.Dispose();
+            _powerPresenter?.Dispose();
         }
 
         private void MainWindow_OnLoaded(object sender, RoutedEventArgs e)

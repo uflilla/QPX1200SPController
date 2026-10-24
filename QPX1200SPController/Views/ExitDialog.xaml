@@ -1,0 +1,62 @@
+<Window
+  x:Class="QPX1200SPController.Views.ExitDialog"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+  Title="Exit"
+  Width="440"
+  Background="{DynamicResource MaterialDesignPaper}"
+  FontFamily="{materialDesign:MaterialDesignFont}"
+  ResizeMode="NoResize"
+  ShowInTaskbar="False"
+  SizeToContent="Height"
+  TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+  WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="24,20,24,20">
+    <StackPanel Margin="0,0,0,12" Orientation="Horizontal">
+      <materialDesign:PackIcon
+        x:Name="HeaderIcon"
+        Width="28"
+        Height="28"
+        VerticalAlignment="Center"
+        Foreground="#F57C00"
+        Kind="AlertOutline" />
+      <TextBlock
+        x:Name="HeaderText"
+        Margin="10,0,0,0"
+        VerticalAlignment="Center"
+        Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+        Text="Output is ON" />
+    </StackPanel>
+    <TextBlock
+      x:Name="MessageText"
+      Margin="0,0,0,20"
+      TextWrapping="Wrap" />
+    <StackPanel>
+      <Button
+        x:Name="TurnOffButton"
+        Margin="0,0,0,8"
+        HorizontalAlignment="Stretch"
+        Background="#D32F2F"
+        BorderBrush="#D32F2F"
+        Click="OnTurnOffClick"
+        Content="TURN OUTPUT OFF AND EXIT"
+        Foreground="White"
+        Style="{StaticResource MaterialDesignRaisedButton}" />
+      <Button
+        x:Name="ExitButton"
+        Margin="0,0,0,8"
+        HorizontalAlignment="Stretch"
+        Click="OnExitClick"
+        Content="LEAVE OUTPUT ON AND EXIT"
+        Style="{StaticResource MaterialDesignOutlinedButton}" />
+      <Button
+        HorizontalAlignment="Stretch"
+        Click="OnCancelClick"
+        Content="CANCEL"
+        IsCancel="True"
+        IsDefault="True"
+        Style="{StaticResource MaterialDesignFlatButton}" />
+    </StackPanel>
+  </StackPanel>
+</Window>

@@ -53,8 +53,7 @@ namespace QPX1200SPController.ViewModels
 
         public SettingsViewModel()
         {
-            // Load settings from file
-            _settings = Settings.Load();
+            _settings = Settings.Current;
             
             // Initialize properties from settings
             MinVoltage = _settings.MinVoltage;

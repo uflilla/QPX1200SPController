@@ -11,6 +11,7 @@
   <Grid Margin="16">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
@@ -33,6 +34,53 @@
 
     <materialDesign:Card
       Grid.Row="1"
+      Margin="0,0,0,12"
+      Padding="16,10"
+      materialDesign:ElevationAssist.Elevation="Dp2">
+      <DockPanel>
+        <Button
+          Command="{Binding OpenLogFolderCommand}"
+          DockPanel.Dock="Right"
+          Style="{StaticResource MaterialDesignOutlinedButton}">
+          <StackPanel Orientation="Horizontal">
+            <materialDesign:PackIcon
+              Margin="0,0,6,0"
+              VerticalAlignment="Center"
+              Kind="FolderOpenOutline" />
+            <TextBlock VerticalAlignment="Center" Text="OPEN LOG FOLDER" />
+          </StackPanel>
+        </Button>
+        <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+          <ToggleButton
+            IsChecked="{Binding IsTraceEnabled}"
+            Style="{StaticResource MaterialDesignSwitchToggleButton}"
+            ToolTip="Capture every command and response to a trace file" />
+          <TextBlock
+            Margin="10,0,12,0"
+            VerticalAlignment="Center"
+            FontWeight="SemiBold"
+            Text="Trace mode" />
+          <ComboBox
+            Width="100"
+            Margin="0,0,16,0"
+            VerticalAlignment="Center"
+            DisplayMemberPath="DisplayName"
+            IsEnabled="{Binding IsTraceEnabled, Converter={StaticResource InverseBoolConverter}}"
+            ItemsSource="{Binding TraceDurations}"
+            SelectedItem="{Binding SelectedTraceDuration}"
+            Style="{StaticResource MaterialDesignComboBox}"
+            ToolTip="Trace switches itself off after this time" />
+          <TextBlock
+            VerticalAlignment="Center"
+            Opacity="0.8"
+            Text="{Binding TraceStatusText}"
+            TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </DockPanel>
+    </materialDesign:Card>
+
+    <materialDesign:Card
+      Grid.Row="2"
       materialDesign:ElevationAssist.Elevation="Dp2">
       <DataGrid
         Margin="8"
@@ -44,7 +92,7 @@
         <DataGrid.Columns>
           <DataGridTextColumn
             Width="160"
-            Binding="{Binding Timestamp}"
+            Binding="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff}'}"
             Header="Timestamp" />
           <DataGridTextColumn
             Width="80"

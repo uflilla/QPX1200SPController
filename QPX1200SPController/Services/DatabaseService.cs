@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using QPX1200SPController.Models;
@@ -111,8 +112,8 @@ namespace QPX1200SPController.Services
                     
                     using (var command = new SQLiteCommand(selectSql, connection))
                     {
-                        command.Parameters.AddWithValue("@StartTime", startTime.ToString("yyyy-MM-dd HH:mm:ss"));
-                        command.Parameters.AddWithValue("@EndTime", endTime.ToString("yyyy-MM-dd HH:mm:ss"));
+                        command.Parameters.AddWithValue("@StartTime", startTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
+                        command.Parameters.AddWithValue("@EndTime", endTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
                         
                         using (var reader = command.ExecuteReader())
                         {
@@ -121,7 +122,7 @@ namespace QPX1200SPController.Services
                                 logs.Add(new LogEntry
                                 {
                                     //Id = Convert.ToInt32(reader["Id"]),
-                                    Timestamp = DateTime.Parse(reader["Timestamp"].ToString()),
+                                    Timestamp = DateTime.Parse(reader["Timestamp"].ToString(), CultureInfo.InvariantCulture),
                                     Voltage = Convert.ToDouble(reader["Voltage"]),
                                     Current = Convert.ToDouble(reader["Current"]),
                                     OutputEnabled = Convert.ToInt32(reader["OutputEnabled"]) == 1,
