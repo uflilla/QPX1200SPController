@@ -36,6 +36,10 @@ namespace QPX1200SPController.ViewModels
             SimpleIoc.Default.Register<PowerSupplyService>();
             SimpleIoc.Default.Register<DatabaseService>();
 
+            // Every configuration command, connection event and communication error goes to the CommandLog table.
+            SimpleIoc.Default.GetInstance<PowerSupplyService>().ActivityRecorded +=
+                SimpleIoc.Default.GetInstance<DatabaseService>().EnqueueActivity;
+
             // Register view models
             SimpleIoc.Default.Register<MainViewModel>();
             SimpleIoc.Default.Register<SettingsViewModel>();

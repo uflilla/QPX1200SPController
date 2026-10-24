@@ -56,6 +56,12 @@ namespace QPX1200SPController.Services
         /// </summary>
         public event Action<ConnectionState> ConnectionStateChanged;
 
+        /// <summary>
+        /// Raised for every configuration (non-query) command, every connection event and every
+        /// communication error. May be raised on any thread; handlers must not block.
+        /// </summary>
+        public event Action<ActivityRecord> ActivityRecorded;
+
         public ConnectionState State => _state;
         public bool IsConnected => _state == ConnectionState.Connected;
         public string IpAddress { get; private set; }
@@ -80,6 +86,7 @@ namespace QPX1200SPController.Services
 
                 if (!await OpenSocketAsync(logFailureAsError: true))
                 {
+                    RecordConnection("Connect failed", $"{IpAddress}:{Port}: {LastFaultReason}");
                     SetState(ConnectionState.Disconnected);
                     return false;
                 }
@@ -89,6 +96,7 @@ namespace QPX1200SPController.Services
                 ReconnectAttempt = 0;
                 _autoReconnect = true;
                 LoggingService.Instance.LogInfo($"Connected to {IpAddress}:{Port}.", nameof(PowerSupplyService), nameof(ConnectAsync));
+                RecordConnection("Connected", $"{IpAddress}:{Port}");
                 SetState(ConnectionState.Connected);
                 return true;
             }
@@ -106,7 +114,10 @@ namespace QPX1200SPController.Services
             CloseSocket();
             ResetLatchedEventStatus();
             if (_state != ConnectionState.Disconnected)
+            {
                 LoggingService.Instance.LogInfo("Disconnected by user.", nameof(PowerSupplyService), nameof(Disconnect));
+                RecordConnection("Disconnected", "by user");
+            }
             SetState(ConnectionState.Disconnected);
         }
 
@@ -186,6 +197,7 @@ namespace QPX1200SPController.Services
 
             CloseSocket();
             LastFaultReason = reason;
+            RecordConnection("Lost", reason);
 
             if (_autoReconnect)
             {
@@ -253,6 +265,7 @@ namespace QPX1200SPController.Services
                         _consecutiveProtocolErrors = 0;
                         LoggingService.Instance.LogInfo($"Reconnected to {IpAddress}:{Port} after {ReconnectAttempt} attempt(s).",
                             nameof(PowerSupplyService), nameof(ReconnectLoopAsync));
+                        RecordConnection("Reconnected", $"{IpAddress}:{Port} after {ReconnectAttempt} attempt(s)");
                         SetState(ConnectionState.Connected);
                         return;
                     }
@@ -278,6 +291,35 @@ namespace QPX1200SPController.Services
             ConnectionStateChanged?.Invoke(state);
         }
 
+        private void Record(ActivityRecord record)
+        {
+            try
+            {
+                ActivityRecorded?.Invoke(record);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogException(ex, nameof(PowerSupplyService), nameof(Record));
+            }
+        }
+
+        private void RecordConnection(string result, string detail)
+        {
+            Record(new ActivityRecord(ActivityRecord.KindConnection) { Source = "Link", Result = result, Detail = detail });
+        }
+
+        private void RecordCommError(string command, string response, string detail, double? durationMs = null)
+        {
+            Record(new ActivityRecord(ActivityRecord.KindCommError, command)
+            {
+                Source = "Link",
+                Response = response,
+                Result = ActivityRecord.ResultFailed,
+                Detail = detail,
+                DurationMs = durationMs
+            });
+        }
+
         #endregion
 
         #region Command transport
@@ -285,29 +327,69 @@ namespace QPX1200SPController.Services
         /// <summary>
         /// Sends a command. Returns the response for queries, an empty string for
         /// successful non-queries, or null if the command could not be completed.
+        /// Non-query commands are always recorded (see <see cref="ActivityRecorded"/>).
         /// </summary>
-        public Task<string> SendCommandAsync(string command)
+        public async Task<string> SendCommandAsync(string command, string source = "App")
         {
-            return ExecuteAsync(command, skipIfBusy: false);
+            if (string.IsNullOrWhiteSpace(command))
+                return null;
+            if (IsQuery(command))
+                return (await ExecuteAsync(command, skipIfBusy: false)).Response;
+
+            var record = await SendConfigCommandAsync(command, source);
+            return record.Success ? string.Empty : null;
         }
 
-        private async Task<string> ExecuteAsync(string command, bool skipIfBusy)
+        /// <summary>
+        /// Sends a configuration (non-query) command and raises its log record. The caller may
+        /// add a read-back with <see cref="ActivityRecord.Complete"/>; otherwise it is written as is.
+        /// </summary>
+        public async Task<ActivityRecord> SendConfigCommandAsync(string command, string source, double? requested = null)
         {
-            if (string.IsNullOrWhiteSpace(command) || !IsConnected)
-                return null;
+            command = command?.Trim() ?? string.Empty;
+            var record = new ActivityRecord(ActivityRecord.KindCommand, command)
+            {
+                Source = source,
+                Requested = requested
+            };
+
+            var outcome = await ExecuteAsync(command, skipIfBusy: false);
+            record.DurationMs = outcome.DurationMs;
+            record.Result = outcome.Succeeded ? ActivityRecord.ResultOk : ActivityRecord.ResultFailed;
+            record.Detail = outcome.Error;
+            Record(record);
+            return record;
+        }
+
+        private static bool IsQuery(string command)
+        {
+            return command.Trim().EndsWith("?");
+        }
+
+        private async Task<CommandOutcome> ExecuteAsync(string command, bool skipIfBusy)
+        {
+            command = command?.Trim();
+            if (string.IsNullOrEmpty(command))
+                return CommandOutcome.Failed("empty command");
+            if (!IsConnected)
+                return CommandOutcome.Failed("not connected");
 
             // Background polls are skipped when the link is busy; user commands wait their turn.
             if (!await _ioLock.WaitAsync(skipIfBusy ? 0 : CommandLockTimeoutMs))
             {
-                if (!skipIfBusy)
-                    LoggingService.Instance.LogWarning($"Command '{command.Trim()}' not sent: link busy.",
-                        nameof(PowerSupplyService), nameof(ExecuteAsync));
-                return null;
+                if (skipIfBusy)
+                    return CommandOutcome.Failed("skipped: link busy");
+
+                LoggingService.Instance.LogWarning($"Command '{command}' not sent: link busy.",
+                    nameof(PowerSupplyService), nameof(ExecuteAsync));
+                if (IsQuery(command))
+                    RecordCommError(command, null, "not sent: link busy");
+                return CommandOutcome.Failed("not sent: link busy");
             }
 
             try
             {
-                return await ExecuteLockedAsync(command.Trim());
+                return await ExecuteLockedAsync(command);
             }
             finally
             {
@@ -315,7 +397,7 @@ namespace QPX1200SPController.Services
             }
         }
 
-        private async Task<string> ExecuteLockedAsync(string command)
+        private async Task<CommandOutcome> ExecuteLockedAsync(string command)
         {
             NetworkStream stream;
             int generation;
@@ -325,9 +407,9 @@ namespace QPX1200SPController.Services
                 generation = _connectionGeneration;
             }
             if (stream == null || !IsConnected)
-                return null;
+                return CommandOutcome.Failed("not connected");
 
-            bool isQuery = command.EndsWith("?");
+            bool isQuery = IsQuery(command);
             var stopwatch = Stopwatch.StartNew();
             try
             {
@@ -339,21 +421,43 @@ namespace QPX1200SPController.Services
                     ClearLatchedTrips();
 
                 if (!isQuery)
-                    return string.Empty;
+                    return CommandOutcome.Ok(string.Empty, stopwatch.Elapsed.TotalMilliseconds);
 
                 string response = await ReadLinesAsync(stream, GetExpectedQueryLineCount(command), ResponseTimeoutMs);
                 TraceService.Instance.Write("<<", response, stopwatch.Elapsed);
-                return response;
+                return CommandOutcome.Ok(response, stopwatch.Elapsed.TotalMilliseconds);
             }
             catch (Exception ex)
             {
                 // After a timeout or I/O error the stream position is unknown (an abandoned read
                 // may still consume the next reply), so the only safe recovery is a fresh socket.
+                double elapsedMs = stopwatch.Elapsed.TotalMilliseconds;
                 TraceService.Instance.Write("!!", $"{command}: {ex.Message}", stopwatch.Elapsed);
                 LoggingService.Instance.LogWarning($"Command '{command}' failed: {ex.Message}",
                     nameof(PowerSupplyService), nameof(ExecuteLockedAsync));
+                if (isQuery)
+                    RecordCommError(command, null, ex.Message, elapsedMs);
                 HandleConnectionFault(generation, ex.Message);
-                return null;
+                return CommandOutcome.Failed(ex.Message, elapsedMs);
+            }
+        }
+
+        private struct CommandOutcome
+        {
+            public string Response;
+            public string Error;
+            public double? DurationMs;
+
+            public bool Succeeded => Error == null;
+
+            public static CommandOutcome Ok(string response, double durationMs)
+            {
+                return new CommandOutcome { Response = response, DurationMs = durationMs };
+            }
+
+            public static CommandOutcome Failed(string error, double? durationMs = null)
+            {
+                return new CommandOutcome { Error = error, DurationMs = durationMs };
             }
         }
 
@@ -408,8 +512,9 @@ namespace QPX1200SPController.Services
         /// Called after an unparseable reply. Discards anything left in the receive path so the
         /// next exchange starts clean; repeated errors force a reconnect.
         /// </summary>
-        private async Task RegisterProtocolErrorAsync(string description, int generation)
+        private async Task RegisterProtocolErrorAsync(string command, string response, string description, int generation)
         {
+            RecordCommError(command, response, description);
             _consecutiveProtocolErrors++;
             LoggingService.Instance.LogWarning(
                 $"{description} (consecutive invalid responses: {_consecutiveProtocolErrors})",
@@ -490,23 +595,24 @@ namespace QPX1200SPController.Services
 
         #region Queries
 
-        public Task<string> GetIdentityAsync()
+        public async Task<string> GetIdentityAsync()
         {
-            return ExecuteAsync(PowerSupplyCommands.GetPsIdentityCommand, skipIfBusy: false);
+            return (await ExecuteAsync(PowerSupplyCommands.GetPsIdentityCommand, skipIfBusy: false)).Response;
         }
 
         /// <summary>Reads live output values and status. Returns null if the read failed or was skipped.</summary>
         public async Task<PowerSupplyStatus> GetStatusAsync(bool skipIfBusy = true)
         {
             int generation = CurrentGeneration;
-            string response = await ExecuteAsync(PowerSupplyCommands.GetPsStatusCommand, skipIfBusy);
+            string response = (await ExecuteAsync(PowerSupplyCommands.GetPsStatusCommand, skipIfBusy)).Response;
             if (response == null)
                 return null;
 
             var status = ParsePsStatus(response);
             if (status == null)
             {
-                await RegisterProtocolErrorAsync($"Invalid status response: '{Escape(response)}'", generation);
+                await RegisterProtocolErrorAsync(PowerSupplyCommands.GetPsStatusCommand, response,
+                    $"Invalid status response: '{Escape(response)}'", generation);
                 return null;
             }
 
@@ -518,14 +624,15 @@ namespace QPX1200SPController.Services
         public async Task<PowerSupplySettingStatus> GetPowerSupplySettingsAsync(bool skipIfBusy = false)
         {
             int generation = CurrentGeneration;
-            string response = await ExecuteAsync(PowerSupplyCommands.GetPsSettingStatusCommand, skipIfBusy);
+            string response = (await ExecuteAsync(PowerSupplyCommands.GetPsSettingStatusCommand, skipIfBusy)).Response;
             if (response == null)
                 return null;
 
             var settings = ParsePsSettingStatus(response);
             if (settings == null)
             {
-                await RegisterProtocolErrorAsync($"Invalid settings response: '{Escape(response)}'", generation);
+                await RegisterProtocolErrorAsync(PowerSupplyCommands.GetPsSettingStatusCommand, response,
+                    $"Invalid settings response: '{Escape(response)}'", generation);
                 return null;
             }
 
@@ -690,31 +797,33 @@ namespace QPX1200SPController.Services
 
         #region Set commands
 
-        public async Task<bool> SetVoltageAsync(double voltage)
+        // Each returns the command's log record (check .Success); callers add the read-back with Complete().
+
+        public Task<ActivityRecord> SetVoltageAsync(double voltage, string source = "App")
         {
-            return await SendCommandAsync("V1 " + voltage.ToString("F3", Inv)) != null;
+            return SendConfigCommandAsync("V1 " + voltage.ToString("F3", Inv), source, Math.Round(voltage, 3));
         }
 
-        public async Task<bool> SetCurrentAsync(double current)
+        public Task<ActivityRecord> SetCurrentAsync(double current, string source = "App")
         {
-            return await SendCommandAsync("I1 " + current.ToString("F3", Inv)) != null;
+            return SendConfigCommandAsync("I1 " + current.ToString("F3", Inv), source, Math.Round(current, 3));
         }
 
-        public async Task<bool> SetOutputAsync(bool enabled)
+        public Task<ActivityRecord> SetOutputAsync(bool enabled, string source = "App")
         {
-            return await SendCommandAsync(enabled ? "OP1 1" : "OP1 0") != null;
+            return SendConfigCommandAsync(enabled ? "OP1 1" : "OP1 0", source, enabled ? 1 : 0);
         }
 
-        public async Task<bool> SetOverVoltageProtectionAsync(double voltage)
+        public Task<ActivityRecord> SetOverVoltageProtectionAsync(double voltage, string source = "App")
         {
             // The protection is always enabled on the QPX1200SP; only the level can be set.
-            return await SendCommandAsync("OVP1 " + voltage.ToString("F3", Inv)) != null;
+            return SendConfigCommandAsync("OVP1 " + voltage.ToString("F3", Inv), source, Math.Round(voltage, 3));
         }
 
-        public async Task<bool> SetOverCurrentProtectionAsync(double current)
+        public Task<ActivityRecord> SetOverCurrentProtectionAsync(double current, string source = "App")
         {
             // The protection is always enabled on the QPX1200SP; only the level can be set.
-            return await SendCommandAsync("OCP1 " + current.ToString("F3", Inv)) != null;
+            return SendConfigCommandAsync("OCP1 " + current.ToString("F3", Inv), source, Math.Round(current, 3));
         }
 
         #endregion

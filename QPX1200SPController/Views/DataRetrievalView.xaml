@@ -58,11 +58,19 @@
           Text="End Date/Time" />
         <xctk:DateTimePicker
           MinWidth="220"
-          Margin="0,0,16,0"
+          Margin="0,0,8,0"
           VerticalAlignment="Center"
           Format="Custom"
           FormatString="yyyy-MM-dd HH:mm:ss"
+          IsEnabled="{Binding IsEndNow, Converter={StaticResource InverseBoolConverter}}"
           Value="{Binding EndDate}" />
+        <CheckBox
+          Margin="0,0,16,0"
+          VerticalAlignment="Center"
+          Content="Up to now"
+          IsChecked="{Binding IsEndNow}"
+          Style="{StaticResource MaterialDesignCheckBox}"
+          ToolTip="Use the current time as the end of the range each time data is loaded" />
         <Button
           Margin="0,0,8,0"
           Command="{Binding LoadDataCommand}"
@@ -78,18 +86,26 @@
     <materialDesign:Card
       Grid.Row="2"
       materialDesign:ElevationAssist.Elevation="Dp2">
+      <TabControl
+        materialDesign:ColorZoneAssist.Mode="Standard"
+        SelectedIndex="{Binding SelectedTabIndex}"
+        Style="{StaticResource MaterialDesignTabControl}">
+        <TabItem Header="Measurements">
       <DataGrid
         Margin="8"
         AutoGenerateColumns="False"
         CanUserAddRows="False"
         EnableRowVirtualization="True"
+        EnableColumnVirtualization="True"
         IsReadOnly="True"
         ItemsSource="{Binding Logs}"
-        Style="{StaticResource MaterialDesignDataGrid}">
+        Style="{StaticResource MaterialDesignDataGrid}"
+        VirtualizingPanel.IsVirtualizing="True"
+        VirtualizingPanel.VirtualizationMode="Recycling">
         <DataGrid.Columns>
           <DataGridTextColumn
-            Width="160"
-            Binding="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"
+            Width="180"
+            Binding="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff}'}"
             Header="Timestamp" />
           <DataGridTextColumn
             Width="100"
@@ -99,6 +115,10 @@
             Width="100"
             Binding="{Binding Current, StringFormat='{}{0:F3}'}"
             Header="Current (A)" />
+          <DataGridTextColumn
+            Width="100"
+            Binding="{Binding Power, StringFormat='{}{0:F2}'}"
+            Header="Power (W)" />
           <DataGridCheckBoxColumn
             Width="70"
             Binding="{Binding OutputEnabled}"
@@ -123,8 +143,85 @@
             Width="70"
             Binding="{Binding OcpTrip}"
             Header="OCP Trip" />
+          <DataGridCheckBoxColumn
+            Width="80"
+            Binding="{Binding SenseTrip}"
+            Header="Sense Trip" />
+          <DataGridCheckBoxColumn
+            Width="80"
+            Binding="{Binding FaultTrip}"
+            Header="Fault Trip" />
         </DataGrid.Columns>
       </DataGrid>
+        </TabItem>
+        <TabItem Header="Commands &amp; events">
+          <DataGrid
+            Margin="8"
+            AutoGenerateColumns="False"
+            CanUserAddRows="False"
+            EnableRowVirtualization="True"
+            IsReadOnly="True"
+            ItemsSource="{Binding Activities}"
+            Style="{StaticResource MaterialDesignDataGrid}">
+            <DataGrid.RowStyle>
+              <Style BasedOn="{StaticResource MaterialDesignDataGridRow}" TargetType="DataGridRow">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Result}" Value="Failed">
+                    <Setter Property="Foreground" Value="#C62828" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Result}" Value="Mismatch">
+                    <Setter Property="Foreground" Value="#E65100" />
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Result}" Value="Lost">
+                    <Setter Property="Foreground" Value="#E65100" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+              <DataGridTextColumn
+                Width="180"
+                Binding="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff}'}"
+                Header="Timestamp" />
+              <DataGridTextColumn
+                Width="95"
+                Binding="{Binding Kind}"
+                Header="Type" />
+              <DataGridTextColumn
+                Width="110"
+                Binding="{Binding Source}"
+                Header="Source" />
+              <DataGridTextColumn
+                Width="170"
+                Binding="{Binding Command}"
+                Header="Command" />
+              <DataGridTextColumn
+                Width="100"
+                Binding="{Binding Result}"
+                Header="Result" />
+              <DataGridTextColumn
+                Width="90"
+                Binding="{Binding Requested, StringFormat='{}{0:F3}'}"
+                Header="Requested" />
+              <DataGridTextColumn
+                Width="90"
+                Binding="{Binding Readback, StringFormat='{}{0:F3}'}"
+                Header="Read-back" />
+              <DataGridTextColumn
+                Width="70"
+                Binding="{Binding DurationMs, StringFormat='{}{0:F0}'}"
+                Header="ms" />
+              <DataGridTemplateColumn Width="*" Header="Detail">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+        </TabItem>
+      </TabControl>
     </materialDesign:Card>
 
     <materialDesign:ColorZone

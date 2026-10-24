@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -18,18 +17,15 @@ namespace QPX1200SPController.ViewModels
     public class MainViewModel : ViewModelBase
     {
         private static readonly TimeSpan SettingsPollInterval = TimeSpan.FromSeconds(3);
-        private const int MaxPendingLogSamples = 100000; // ~1 day at 1 Hz if the database is unavailable
+        private const string CommandSource = "Control panel"; // Source column of the command log
 
         private readonly PowerSupplyService _powerSupplyService;
         private readonly DatabaseService _databaseService;
         private readonly Settings _settings = Settings.Current;
         private readonly DispatcherTimer _pollTimer;
-        private readonly DispatcherTimer _loggingTimer;
-        private readonly ConcurrentQueue<PowerSupplyStatus> _powerSupplyStatusQueue = new ConcurrentQueue<PowerSupplyStatus>();
         private readonly LiveTelemetryBuffer _telemetryBuffer = new LiveTelemetryBuffer();
 
         private bool _pollInProgress;
-        private bool _loggingInProgress;
         private bool _shutdownInProgress;
         private DateTime _nextSettingsPollUtc = DateTime.MinValue;
         private ConnectionState _appliedConnectionState = ConnectionState.Disconnected;
@@ -323,12 +319,6 @@ namespace QPX1200SPController.ViewModels
             _pollTimer = new DispatcherTimer();
             _pollTimer.Tick += async (s, e) => await PollAsync();
 
-            _loggingTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(5)
-            };
-            _loggingTimer.Tick += async (s, e) => await LogData();
-
             SelectedSampleRate = SampleRates.FirstOrDefault(r => r.Hz == _settings.SampleRateHz) ?? SampleRates[1];
             _pollTimer.Interval = SelectedSampleRate.Interval;
             SettingsUpdated(_settings);
@@ -430,7 +420,6 @@ namespace QPX1200SPController.ViewModels
                     {
                         _nextSettingsPollUtc = DateTime.MinValue;
                         _pollTimer.Start();
-                        _loggingTimer.Start();
                         _ = OnConnectedAsync(isReconnect: previous == ConnectionState.Reconnecting);
                     }
                     break;
@@ -456,7 +445,6 @@ namespace QPX1200SPController.ViewModels
                     SupplyName = string.Empty;
                     IsInConfigMode = false;
                     GraphDataUpdated?.Invoke();
-                    _ = LogData(); // write what is still queued
                     break;
             }
 
@@ -525,39 +513,9 @@ namespace QPX1200SPController.ViewModels
             Status = status;
             EventStatus = status.EventStatus;
 
-            _powerSupplyStatusQueue.Enqueue(status);
-            while (_powerSupplyStatusQueue.Count > MaxPendingLogSamples && _powerSupplyStatusQueue.TryDequeue(out _))
-            {
-            }
-
+            _databaseService.EnqueueSample(status);
             _telemetryBuffer.Add(status.Timestamp, status.Voltage, status.Current, status.Power);
             GraphDataUpdated?.Invoke();
-        }
-
-        private async Task LogData()
-        {
-            if (_loggingInProgress)
-                return;
-
-            _loggingInProgress = true;
-            try
-            {
-                while (_powerSupplyStatusQueue.TryPeek(out var status))
-                {
-                    if (status != null)
-                        await _databaseService.LogPowerSupplyStatusAsync(status);
-                    _powerSupplyStatusQueue.TryDequeue(out _);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Keep the sample queued and retry on the next tick.
-                LoggingService.Instance.LogException(ex, nameof(MainViewModel), nameof(LogData));
-            }
-            finally
-            {
-                _loggingInProgress = false;
-            }
         }
 
         #endregion
@@ -580,13 +538,13 @@ namespace QPX1200SPController.ViewModels
                 return;
             }
 
-            double requested = VoltageToSet;
-            if (!await _powerSupplyService.SetVoltageAsync(requested))
+            var record = await _powerSupplyService.SetVoltageAsync(VoltageToSet, CommandSource);
+            if (!record.Success)
             {
                 ShowError("The voltage command could not be sent. See App Logs for details.");
                 return;
             }
-            await RefreshSettingsAndVerifyAsync("Voltage", requested, s => s.SetVoltage, "V");
+            await RefreshSettingsAndVerifyAsync(record, "Voltage", s => s.SetVoltage, "V");
         }
 
         private async Task SetCurrentAsync()
@@ -597,13 +555,13 @@ namespace QPX1200SPController.ViewModels
                 return;
             }
 
-            double requested = CurrentToSet;
-            if (!await _powerSupplyService.SetCurrentAsync(requested))
+            var record = await _powerSupplyService.SetCurrentAsync(CurrentToSet, CommandSource);
+            if (!record.Success)
             {
                 ShowError("The current command could not be sent. See App Logs for details.");
                 return;
             }
-            await RefreshSettingsAndVerifyAsync("Current", requested, s => s.SetCurrent, "A");
+            await RefreshSettingsAndVerifyAsync(record, "Current", s => s.SetCurrent, "A");
         }
 
         private async Task SetOvpAsync()
@@ -614,13 +572,13 @@ namespace QPX1200SPController.ViewModels
                 return;
             }
 
-            double requested = OvpToSet;
-            if (!await _powerSupplyService.SetOverVoltageProtectionAsync(requested))
+            var record = await _powerSupplyService.SetOverVoltageProtectionAsync(OvpToSet, CommandSource);
+            if (!record.Success)
             {
                 ShowError("The OVP command could not be sent. See App Logs for details.");
                 return;
             }
-            await RefreshSettingsAndVerifyAsync("OVP", requested, s => s.SetOvpLevel, "V");
+            await RefreshSettingsAndVerifyAsync(record, "OVP", s => s.SetOvpLevel, "V");
         }
 
         private async Task SetOcpAsync()
@@ -631,39 +589,44 @@ namespace QPX1200SPController.ViewModels
                 return;
             }
 
-            double requested = OcpToSet;
-            if (!await _powerSupplyService.SetOverCurrentProtectionAsync(requested))
+            var record = await _powerSupplyService.SetOverCurrentProtectionAsync(OcpToSet, CommandSource);
+            if (!record.Success)
             {
                 ShowError("The OCP command could not be sent. See App Logs for details.");
                 return;
             }
-            await RefreshSettingsAndVerifyAsync("OCP", requested, s => s.SetOcpLevel, "A");
+            await RefreshSettingsAndVerifyAsync(record, "OCP", s => s.SetOcpLevel, "A");
         }
 
-        /// <summary>Reads the set-points back and logs a warning if the supply did not take the requested value.</summary>
-        private async Task RefreshSettingsAndVerifyAsync(string name, double requested,
+        /// <summary>
+        /// Reads the set-points back, records the read-back on the command's log row and
+        /// logs a warning if the supply did not take the requested value.
+        /// </summary>
+        private async Task RefreshSettingsAndVerifyAsync(ActivityRecord record, string name,
             Func<PowerSupplySettingStatus, double> selector, string unit)
         {
+            double expected = record.Requested ?? 0;
             var settings = await _powerSupplyService.GetPowerSupplySettingsAsync();
             if (settings == null)
             {
-                LoggingService.Instance.LogWarning($"{name} sent ({requested:F3} {unit}) but the read-back failed.",
+                record.Complete(detail: "read-back failed");
+                LoggingService.Instance.LogWarning($"{name} sent ({expected:F3} {unit}) but the read-back failed.",
                     nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
                 return;
             }
 
             PowerSupplySettingStatus = settings;
             double actual = selector(settings);
-            double expected = Math.Round(requested, 3);
             double tolerance = Math.Max(0.011, Math.Abs(expected) * 0.001);
             if (Math.Abs(actual - expected) > tolerance)
             {
-                LoggingService.Instance.LogWarning(
-                    $"{name} read-back mismatch: requested {expected:F3} {unit}, supply reports {actual:F3} {unit}.",
-                    nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
+                string message = $"{name} read-back mismatch: requested {expected:F3} {unit}, supply reports {actual:F3} {unit}.";
+                record.Complete(ActivityRecord.ResultMismatch, actual, message);
+                LoggingService.Instance.LogWarning(message, nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
             }
             else
             {
+                record.Complete(ActivityRecord.ResultOk, actual);
                 LoggingService.Instance.LogInfo($"{name} set to {actual:F3} {unit}.",
                     nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
             }
@@ -672,24 +635,59 @@ namespace QPX1200SPController.ViewModels
         private async Task ToggleOutput()
         {
             bool enable = !Status.OutputEnabled;
-            if (!await _powerSupplyService.SetOutputAsync(enable))
+            var record = await _powerSupplyService.SetOutputAsync(enable, CommandSource);
+            if (!record.Success)
             {
                 ShowError("The output command could not be sent. See App Logs for details.");
                 return;
             }
 
-            LoggingService.Instance.LogInfo($"Output switched {(enable ? "ON" : "OFF")}.", nameof(MainViewModel), nameof(ToggleOutput));
-            var status = await _powerSupplyService.GetStatusAsync(skipIfBusy: false);
-            if (status != null)
-                ApplyStatus(status);
+            await VerifyOutputAsync(record, enable);
             IsInConfigMode = false;
+        }
+
+        /// <summary>Reads the output state back onto the command's log row. Returns true if it matches.</summary>
+        private async Task<bool> VerifyOutputAsync(ActivityRecord record, bool expectedOn)
+        {
+            var status = await _powerSupplyService.GetStatusAsync(skipIfBusy: false);
+            if (status == null)
+            {
+                record.Complete(detail: "read-back failed");
+                LoggingService.Instance.LogWarning($"Output {(expectedOn ? "ON" : "OFF")} sent but the read-back failed.",
+                    nameof(MainViewModel), nameof(VerifyOutputAsync));
+                return false;
+            }
+
+            ApplyStatus(status);
+            bool matches = status.OutputEnabled == expectedOn;
+            if (matches)
+            {
+                record.Complete(ActivityRecord.ResultOk, status.OutputEnabled ? 1 : 0);
+                LoggingService.Instance.LogInfo($"Output switched {(expectedOn ? "ON" : "OFF")}.", nameof(MainViewModel), nameof(VerifyOutputAsync));
+            }
+            else
+            {
+                string message = $"Output {(expectedOn ? "ON" : "OFF")} requested but the supply reports {(status.OutputEnabled ? "ON" : "OFF")}" +
+                                 (expectedOn && HasTrip(status.EventStatus) ? " (trip active - use TRIP Reset)." : ".");
+                record.Complete(ActivityRecord.ResultMismatch, status.OutputEnabled ? 1 : 0, message);
+                LoggingService.Instance.LogWarning(message, nameof(MainViewModel), nameof(VerifyOutputAsync));
+            }
+            return matches;
+        }
+
+        private static bool HasTrip(EventStatus e)
+        {
+            return e != null && (e.OverVoltageTrip == 1 || e.OverCurrentTrip == 1 || e.OutputSenseTrip == 1 || e.FaultTrip == 1);
         }
 
         private async Task SendMiscCommandAsync(string command)
         {
             if (string.IsNullOrWhiteSpace(command))
                 return;
-            if (await _powerSupplyService.SendCommandAsync(command) == null)
+
+            var record = await _powerSupplyService.SendConfigCommandAsync(command, CommandSource);
+            record.Complete();
+            if (!record.Success)
                 ShowError($"'{command}' could not be sent. See App Logs for details.");
             else
                 LoggingService.Instance.LogInfo($"Sent '{command}'.", nameof(MainViewModel), nameof(SendMiscCommandAsync));
@@ -729,14 +727,8 @@ namespace QPX1200SPController.ViewModels
 
                     if (choice == ExitChoice.TurnOutputOffAndExit)
                     {
-                        bool confirmedOff = await _powerSupplyService.SetOutputAsync(false);
-                        if (confirmedOff)
-                        {
-                            var status = await _powerSupplyService.GetStatusAsync(skipIfBusy: false);
-                            confirmedOff = status != null && !status.OutputEnabled;
-                            if (status != null)
-                                ApplyStatus(status);
-                        }
+                        var record = await _powerSupplyService.SetOutputAsync(false, "Exit");
+                        bool confirmedOff = record.Success && await VerifyOutputAsync(record, expectedOn: false);
 
                         if (confirmedOff)
                         {
@@ -764,13 +756,10 @@ namespace QPX1200SPController.ViewModels
 
                 _powerSupplyService.ConnectionStateChanged -= OnConnectionStateChanged;
                 _pollTimer.Stop();
-                _loggingTimer.Stop();
                 _powerSupplyService.Disconnect();
 
-                // Let an in-flight logging tick finish, then write whatever is still queued.
-                for (int i = 0; _loggingInProgress && i < 100; i++)
-                    await Task.Delay(50);
-                await LogData();
+                // Write every queued sample and log row before the process ends.
+                await _databaseService.FlushAsync(force: true);
                 return true;
             }
             finally

@@ -34,6 +34,9 @@ namespace QPX1200SPController.Models
         public double SampleRateHz { get; set; } = 1.0;
         public string LastIpAddress { get; set; } = DefaultIpAddress;
 
+        /// <summary>Database rows older than this are deleted. 0 keeps everything.</summary>
+        public int RetentionDays { get; set; } = 0;
+
         [XmlIgnore] public double MinOvpLevel => 0;
         [XmlIgnore] public double MaxOvpLevel => 61;
         [XmlIgnore] public double MinOcpLevel => 0;
@@ -85,6 +88,9 @@ namespace QPX1200SPController.Models
 
             if (Array.IndexOf(SampleRateOptionsHz, SampleRateHz) < 0)
                 SampleRateHz = 1.0;
+
+            if (RetentionDays < 0)
+                RetentionDays = 0;
 
             if (string.IsNullOrWhiteSpace(LastIpAddress))
                 LastIpAddress = DefaultIpAddress;
