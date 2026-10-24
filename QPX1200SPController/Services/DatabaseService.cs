@@ -22,8 +22,6 @@ namespace QPX1200SPController.Services
         public const string TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff";
         public const int MaxRowsPerQuery = 200000;
 
-        // Rows written before v2.4 have whole-second timestamps.
-        private static readonly string[] TimestampReadFormats = { TimestampFormat, "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm:ss.FFFFFFF" };
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan RetentionCheckInterval = TimeSpan.FromHours(6);
@@ -66,15 +64,29 @@ namespace QPX1200SPController.Services
         private SQLiteConnection Open()
         {
             var connection = new SQLiteConnection(_connectionString);
-            connection.Open();
-            Execute(connection, "PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;");
-            return connection;
+            try
+            {
+                connection.Open();
+                Execute(connection, "PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;");
+                return connection;
+            }
+            catch
+            {
+                // Release the file handle, otherwise a damaged file cannot be set aside.
+                connection.Dispose();
+                throw;
+            }
         }
 
         private bool TryInitialize()
         {
             try
             {
+                // The app is always installed fresh, so there is no schema upgrade path: a database
+                // file with any other layout (or a damaged file) is set aside and a new one started.
+                if (File.Exists(_dbPath) && !HasCurrentSchema())
+                    SetAsideIncompatibleDatabase();
+
                 if (!File.Exists(_dbPath))
                     SQLiteConnection.CreateFile(_dbPath);
 
@@ -82,7 +94,6 @@ namespace QPX1200SPController.Services
                 {
                     // WAL lets the Data Logs/plots read while samples are being written.
                     Execute(connection, "PRAGMA journal_mode = WAL;");
-                    int version = Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), Inv);
 
                     using (var transaction = connection.BeginTransaction())
                     {
@@ -92,20 +103,33 @@ namespace QPX1200SPController.Services
                                 Timestamp TEXT NOT NULL,
                                 Voltage REAL NOT NULL,
                                 Current REAL NOT NULL,
-                                Power REAL,
+                                Power REAL NOT NULL,
                                 OutputEnabled INTEGER NOT NULL,
                                 CvMode INTEGER NOT NULL,
                                 CcMode INTEGER NOT NULL,
                                 UnregulatedMode INTEGER NOT NULL,
                                 OvpTrip INTEGER NOT NULL,
                                 OcpTrip INTEGER NOT NULL,
-                                OutputSenseTrip INTEGER NOT NULL DEFAULT 0,
-                                FaultTrip INTEGER NOT NULL DEFAULT 0
-                            );");
+                                OutputSenseTrip INTEGER NOT NULL,
+                                FaultTrip INTEGER NOT NULL
+                            );
+                            CREATE INDEX IF NOT EXISTS IX_PowerLogs_Timestamp ON PowerLogs (Timestamp);
 
-                        if (version < 1)
-                            MigrateToV1(connection, version);
-
+                            CREATE TABLE IF NOT EXISTS CommandLog (
+                                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                Timestamp TEXT NOT NULL,
+                                Kind TEXT NOT NULL,
+                                Source TEXT,
+                                Command TEXT,
+                                Response TEXT,
+                                Result TEXT,
+                                Requested REAL,
+                                Readback REAL,
+                                Detail TEXT,
+                                DurationMs REAL
+                            );
+                            CREATE INDEX IF NOT EXISTS IX_CommandLog_Timestamp ON CommandLog (Timestamp);");
+                        Execute(connection, $"PRAGMA user_version = {SchemaVersion};");
                         transaction.Commit();
                     }
                 }
@@ -121,58 +145,40 @@ namespace QPX1200SPController.Services
             }
         }
 
-        /// <summary>
-        /// v0 (up to v2.3): PowerLogs without Power/Sense/Fault, no index, no CommandLog.
-        /// Existing rows are kept; Power is back-filled from V x I.
-        /// </summary>
-        private static void MigrateToV1(SQLiteConnection connection, int fromVersion)
+        /// <summary>True for a database created by this version, or an empty file.</summary>
+        private bool HasCurrentSchema()
         {
-            var columns = GetColumns(connection, "PowerLogs");
-            if (!columns.Contains("Power"))
+            try
             {
-                Execute(connection, "ALTER TABLE PowerLogs ADD COLUMN Power REAL;");
-                Execute(connection, "UPDATE PowerLogs SET Power = Voltage * Current WHERE Power IS NULL;");
+                using (var connection = Open())
+                {
+                    if (Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), Inv) == SchemaVersion)
+                        return true;
+                    return Convert.ToInt64(Scalar(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table';"), Inv) == 0;
+                }
             }
-            if (!columns.Contains("OutputSenseTrip"))
-                Execute(connection, "ALTER TABLE PowerLogs ADD COLUMN OutputSenseTrip INTEGER NOT NULL DEFAULT 0;");
-            if (!columns.Contains("FaultTrip"))
-                Execute(connection, "ALTER TABLE PowerLogs ADD COLUMN FaultTrip INTEGER NOT NULL DEFAULT 0;");
-
-            Execute(connection, "CREATE INDEX IF NOT EXISTS IX_PowerLogs_Timestamp ON PowerLogs (Timestamp);");
-
-            Execute(connection, @"
-                CREATE TABLE IF NOT EXISTS CommandLog (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Timestamp TEXT NOT NULL,
-                    Kind TEXT NOT NULL,
-                    Source TEXT,
-                    Command TEXT,
-                    Response TEXT,
-                    Result TEXT,
-                    Requested REAL,
-                    Readback REAL,
-                    Detail TEXT,
-                    DurationMs REAL
-                );");
-            Execute(connection, "CREATE INDEX IF NOT EXISTS IX_CommandLog_Timestamp ON CommandLog (Timestamp);");
-            Execute(connection, $"PRAGMA user_version = {SchemaVersion};");
-
-            long rows = Convert.ToInt64(Scalar(connection, "SELECT COUNT(*) FROM PowerLogs;"), Inv);
-            LoggingService.Instance.LogInfo(
-                $"Database schema upgraded from v{fromVersion} to v{SchemaVersion} ({rows} existing sample rows kept).",
-                nameof(DatabaseService), nameof(MigrateToV1));
+            catch
+            {
+                return false; // not a readable SQLite database
+            }
         }
 
-        private static HashSet<string> GetColumns(SQLiteConnection connection, string table)
+        private void SetAsideIncompatibleDatabase()
         {
-            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            using (var command = new SQLiteCommand($"PRAGMA table_info({table});", connection))
-            using (var reader = command.ExecuteReader())
+            SQLiteConnection.ClearAllPools();
+            string target = Path.Combine(Path.GetDirectoryName(_dbPath),
+                $"powerlog_old_{DateTime.Now.ToString("yyyyMMdd_HHmmss", Inv)}.db");
+
+            File.Move(_dbPath, target);
+            foreach (var suffix in new[] { "-wal", "-shm" })
             {
-                while (reader.Read())
-                    columns.Add(reader["name"].ToString());
+                if (File.Exists(_dbPath + suffix))
+                    File.Move(_dbPath + suffix, target + suffix);
             }
-            return columns;
+
+            LoggingService.Instance.LogWarning(
+                $"powerlog.db was not created by this version of the app. It was renamed to {Path.GetFileName(target)} and a new database was started.",
+                nameof(DatabaseService), nameof(SetAsideIncompatibleDatabase));
         }
 
         #endregion
@@ -425,7 +431,7 @@ namespace QPX1200SPController.Services
                                 Timestamp = timestamp,
                                 Voltage = voltage,
                                 Current = current,
-                                Power = reader.IsDBNull(3) ? voltage * current : reader.GetDouble(3),
+                                Power = reader.GetDouble(3),
                                 OutputEnabled = reader.GetInt64(4) == 1,
                                 CvMode = reader.GetInt64(5) == 1,
                                 CcMode = reader.GetInt64(6) == 1,
@@ -495,7 +501,7 @@ namespace QPX1200SPController.Services
 
         private static bool TryParseTimestamp(string text, out DateTime timestamp)
         {
-            return DateTime.TryParseExact(text, TimestampReadFormats, Inv, DateTimeStyles.None, out timestamp);
+            return DateTime.TryParseExact(text, TimestampFormat, Inv, DateTimeStyles.None, out timestamp);
         }
 
         private static void AddRange(SQLiteCommand command, DateTime startTime, DateTime endTime)
