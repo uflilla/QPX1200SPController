@@ -45,6 +45,15 @@ namespace QPX1200SPController.ViewModels
             SimpleIoc.Default.Register<SettingsViewModel>();
             //SimpleIoc.Default.Register<LogViewModel>();
             SimpleIoc.Default.Register<DataRetrievalViewModel>();
+            SimpleIoc.Default.Register<HistoryViewModel>();
+        }
+
+        public HistoryViewModel History
+        {
+            get
+            {
+                return ServiceLocator.Current.GetInstance<HistoryViewModel>();
+            }
         }
 
         public MainViewModel Main

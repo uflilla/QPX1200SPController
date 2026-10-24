@@ -985,6 +985,9 @@
         <TabItem Header="Settings">
           <View:Settings />
         </TabItem>
+        <TabItem Header="History">
+          <View:HistoryView />
+        </TabItem>
         <TabItem Header="Data Logs">
           <View:DataRetrievalView />
         </TabItem>

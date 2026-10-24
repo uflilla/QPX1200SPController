@@ -91,6 +91,49 @@
         SelectedIndex="{Binding SelectedTabIndex}"
         Style="{StaticResource MaterialDesignTabControl}">
         <TabItem Header="Measurements">
+      <DockPanel>
+      <StackPanel
+        Margin="8,8,8,0"
+        DockPanel.Dock="Top"
+        Orientation="Horizontal">
+        <Button
+          Height="28"
+          Margin="0,0,4,0"
+          Command="{Binding FirstPageCommand}"
+          Style="{StaticResource MaterialDesignOutlinedButton}"
+          AutomationProperties.Name="First page"
+          ToolTip="First page">
+          <materialDesign:PackIcon Kind="PageFirst" />
+        </Button>
+        <Button
+          Height="28"
+          Margin="0,0,4,0"
+          Command="{Binding PreviousPageCommand}"
+          Style="{StaticResource MaterialDesignOutlinedButton}"
+          AutomationProperties.Name="Previous page"
+          ToolTip="Previous page">
+          <materialDesign:PackIcon Kind="ChevronLeft" />
+        </Button>
+        <Button
+          Height="28"
+          Margin="0,0,4,0"
+          Command="{Binding NextPageCommand}"
+          Style="{StaticResource MaterialDesignOutlinedButton}"
+          AutomationProperties.Name="Next page"
+          ToolTip="Next page">
+          <materialDesign:PackIcon Kind="ChevronRight" />
+        </Button>
+        <Button
+          Height="28"
+          Margin="0,0,12,0"
+          Command="{Binding LastPageCommand}"
+          Style="{StaticResource MaterialDesignOutlinedButton}"
+          AutomationProperties.Name="Last page"
+          ToolTip="Last page">
+          <materialDesign:PackIcon Kind="PageLast" />
+        </Button>
+        <TextBlock VerticalAlignment="Center" Text="{Binding PageText}" />
+      </StackPanel>
       <DataGrid
         Margin="8"
         AutoGenerateColumns="False"
@@ -153,6 +196,7 @@
             Header="Fault Trip" />
         </DataGrid.Columns>
       </DataGrid>
+      </DockPanel>
         </TabItem>
         <TabItem Header="Commands &amp; events">
           <DataGrid

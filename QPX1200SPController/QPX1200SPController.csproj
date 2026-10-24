@@ -161,6 +161,7 @@
     <Compile Include="Converters\BoolToZeroOneConverter.cs" />
     <Compile Include="Converters\Converters.cs" />
     <Compile Include="Models\ActivityRecord.cs" />
+    <Compile Include="Models\HistoryData.cs" />
     <Compile Include="Models\EventStatus.cs" />
     <Compile Include="Models\LogEntry.cs" />
     <Compile Include="Models\Settings.cs" />
@@ -171,6 +172,11 @@
     <Compile Include="Views\ExitDialog.xaml.cs">
       <DependentUpon>ExitDialog.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\HistoryView.xaml.cs">
+      <DependentUpon>HistoryView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ViewModels\HistoryViewModel.cs" />
+    <Compile Include="Helpers\HistoryPlotPresenter.cs" />
     <Compile Include="ViewModels\AppLogsViewModel.cs" />
     <Compile Include="ViewModels\DataRetrievalViewModel.cs" />
     <Compile Include="ViewModels\LogViewModel.cs" />
@@ -204,6 +210,10 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Views\HistoryView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Views\ExitDialog.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>

@@ -81,6 +81,37 @@ namespace QPX1200SPController.ViewModels
 
         public ICommand LoadDataCommand { get; }
         public ICommand ExportToCsvCommand { get; }
+        public ICommand FirstPageCommand { get; }
+        public ICommand PreviousPageCommand { get; }
+        public ICommand NextPageCommand { get; }
+        public ICommand LastPageCommand { get; }
+
+        public const int PageSize = 1000;
+
+        private DateTime _loadedFrom;
+        private DateTime _loadedTo;
+        private long _totalCount;
+        private long _currentPage;
+
+        /// <summary>Measurements in the loaded range (all pages).</summary>
+        public long TotalCount
+        {
+            get => _totalCount;
+            private set { if (SetProperty(ref _totalCount, value)) RaisePagingChanged(); }
+        }
+
+        /// <summary>1-based page shown in the measurements table.</summary>
+        public long CurrentPage
+        {
+            get => _currentPage;
+            private set { if (SetProperty(ref _currentPage, value)) RaisePagingChanged(); }
+        }
+
+        public long PageCount => TotalCount == 0 ? 0 : (TotalCount + PageSize - 1) / PageSize;
+
+        public string PageText => TotalCount == 0
+            ? "No measurements"
+            : $"Page {CurrentPage:N0} of {PageCount:N0}   (rows {(CurrentPage - 1) * PageSize + 1:N0} - {Math.Min(CurrentPage * PageSize, TotalCount):N0} of {TotalCount:N0})";
 
         public DataRetrievalViewModel(DatabaseService databaseService)
         {
@@ -88,7 +119,17 @@ namespace QPX1200SPController.ViewModels
 
             LoadDataCommand = new RelayCommand(async _ => await LoadData(), _ => IsEndNow || EndDate > StartDate);
             ExportToCsvCommand = new RelayCommand(async _ => await ExportToCsv(),
-                _ => SelectedTabIndex == ActivitiesTab ? Activities.Count > 0 : Logs.Count > 0);
+                _ => SelectedTabIndex == ActivitiesTab ? Activities.Count > 0 : TotalCount > 0);
+            FirstPageCommand = new RelayCommand(async _ => await LoadPageAsync(1), _ => CurrentPage > 1);
+            PreviousPageCommand = new RelayCommand(async _ => await LoadPageAsync(CurrentPage - 1), _ => CurrentPage > 1);
+            NextPageCommand = new RelayCommand(async _ => await LoadPageAsync(CurrentPage + 1), _ => CurrentPage < PageCount);
+            LastPageCommand = new RelayCommand(async _ => await LoadPageAsync(PageCount), _ => CurrentPage < PageCount);
+        }
+
+        private void RaisePagingChanged()
+        {
+            RaisePropertyChanged(nameof(PageCount));
+            RaisePropertyChanged(nameof(PageText));
         }
 
         private async Task LoadData()
@@ -103,24 +144,20 @@ namespace QPX1200SPController.ViewModels
                 // Make sure the most recent samples and commands are on disk first.
                 await _databaseService.FlushAsync(force: false);
 
-                var countTask = _databaseService.CountLogsAsync(StartDate, EndDate);
-                var logsTask = _databaseService.GetLogsAsync(StartDate, EndDate);
-                var activitiesTask = _databaseService.GetActivitiesAsync(StartDate, EndDate);
-                long total = await countTask;
-                var logs = await logsTask;
+                _loadedFrom = StartDate;
+                _loadedTo = EndDate;
+                var countTask = _databaseService.CountLogsAsync(_loadedFrom, _loadedTo);
+                var activitiesTask = _databaseService.GetActivitiesAsync(_loadedFrom, _loadedTo);
+                TotalCount = await countTask;
                 var activities = await activitiesTask;
-
-                // Replace the collections in one step: adding rows one by one froze the UI on large ranges.
-                Logs = new ObservableCollection<LogEntry>(logs);
                 Activities = new ObservableCollection<ActivityRecord>(activities);
+                await LoadPageAsync(1);
 
                 int commands = activities.Count(a => a.Kind == ActivityRecord.KindCommand);
                 int errors = activities.Count(a => a.Kind == ActivityRecord.KindCommError);
-                string measurements = total > logs.Count
-                    ? $"{logs.Count:N0} of {total:N0} measurements (narrow the range to see the rest)"
-                    : $"{logs.Count:N0} measurements";
-                StatusMessage = $"Loaded {measurements}, {commands:N0} commands, {errors:N0} communication errors, " +
-                                $"{activities.Count - commands - errors:N0} connection events.";
+                StatusMessage = $"Loaded {TotalCount:N0} measurements, {commands:N0} commands, {errors:N0} communication errors, " +
+                                $"{activities.Count - commands - errors:N0} connection events." +
+                                (activities.Count >= DatabaseService.MaxRowsPerQuery ? " (Event list limited to the first 200,000.)" : "");
             }
             catch (Exception ex)
             {
@@ -132,6 +169,23 @@ namespace QPX1200SPController.ViewModels
                 IsLoading = false;
                 CommandManager.InvalidateRequerySuggested();
             }
+        }
+
+        private async Task LoadPageAsync(long page)
+        {
+            if (TotalCount == 0)
+            {
+                Logs = new ObservableCollection<LogEntry>();
+                CurrentPage = 0;
+                return;
+            }
+
+            page = Math.Max(1, Math.Min(page, PageCount));
+            var rows = await _databaseService.GetLogsAsync(_loadedFrom, _loadedTo, PageSize, (page - 1) * PageSize);
+            // Replace the collection in one step: adding rows one by one froze the UI.
+            Logs = new ObservableCollection<LogEntry>(rows);
+            CurrentPage = page;
+            CommandManager.InvalidateRequerySuggested();
         }
 
         private async Task ExportToCsv()
@@ -151,10 +205,17 @@ namespace QPX1200SPController.ViewModels
                     return;
 
                 StatusMessage = "Exporting data to CSV...";
-                var logs = Logs.ToList();
-                var activities = Activities.ToList();
                 string path = saveFileDialog.FileName;
 
+                if (!activitiesTab)
+                {
+                    // Every page of the loaded range, streamed straight from the database.
+                    long rows = await _databaseService.ExportLogsToCsvAsync(_loadedFrom, _loadedTo, path);
+                    StatusMessage = $"Exported {rows:N0} measurements to {path}";
+                    return;
+                }
+
+                var activities = Activities.ToList();
                 await Task.Run(() =>
                 {
                     using (var writer = new StreamWriter(path))
@@ -163,26 +224,19 @@ namespace QPX1200SPController.ViewModels
                         csv.Context.TypeConverterCache.AddConverter<bool>(new BoolToZeroOneConverter());
                         csv.Context.TypeConverterOptionsCache.GetOptions<DateTime>().Formats = new[] { DatabaseService.TimestampFormat };
 
-                        if (activitiesTab)
+                        csv.WriteRecords(activities.Select(a => new
                         {
-                            csv.WriteRecords(activities.Select(a => new
-                            {
-                                a.Timestamp,
-                                a.Kind,
-                                a.Source,
-                                a.Command,
-                                a.Result,
-                                a.Requested,
-                                a.Readback,
-                                a.Response,
-                                a.Detail,
-                                a.DurationMs
-                            }));
-                        }
-                        else
-                        {
-                            csv.WriteRecords(logs);
-                        }
+                            a.Timestamp,
+                            a.Kind,
+                            a.Source,
+                            a.Command,
+                            a.Result,
+                            a.Requested,
+                            a.Readback,
+                            a.Response,
+                            a.Detail,
+                            a.DurationMs
+                        }));
                     }
                 });
 
