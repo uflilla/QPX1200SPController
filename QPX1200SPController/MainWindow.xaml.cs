@@ -1,7 +1,9 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using QPX1200SPController.Helpers;
 using QPX1200SPController.Services;
 using QPX1200SPController.ViewModels;
@@ -81,6 +83,10 @@ namespace QPX1200SPController
                 _viewModel.GraphDataUpdated += OnGraphDataUpdated;
                 _viewModel.GraphYAxisChanged += OnGraphYAxisChanged;
                 ThemeService.Instance.ThemeChanged += OnThemeChanged;
+
+                // Create the alarm monitor now (it watches the readings even if its panel is never opened).
+                var locator = (ViewModelLocator)FindResource("Locator");
+                locator.Alarms.AlarmRaised += FlashTaskbarButton;
             }
 
             ApplyControlPanelVisibility(_viewModel.IsControlPanelVisible);
@@ -150,6 +156,34 @@ namespace QPX1200SPController
             var window = _viewModel.SelectedGraphTimeWindow?.Duration;
             foreach (var presenter in Presenters)
                 presenter.Update(samples, follow, window);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FlashInfo
+        {
+            public uint Size;
+            public IntPtr Window;
+            public uint Flags;
+            public uint Count;
+            public uint Timeout;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool FlashWindowEx(ref FlashInfo info);
+
+        /// <summary>Flashes the taskbar button until the window is activated (only when it is in the background).</summary>
+        private void FlashTaskbarButton()
+        {
+            if (IsActive)
+                return;
+            const uint FlashAll = 3, FlashUntilForeground = 12;
+            var info = new FlashInfo
+            {
+                Size = (uint)Marshal.SizeOf(typeof(FlashInfo)),
+                Window = new WindowInteropHelper(this).Handle,
+                Flags = FlashAll | FlashUntilForeground
+            };
+            FlashWindowEx(ref info);
         }
 
         private void OnPlotNavigated()

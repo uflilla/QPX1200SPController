@@ -84,6 +84,15 @@ namespace QPX1200SPSimulator
                     case "V1O?": return F3(MeasureUnlocked().Voltage) + "V";
                     case "I1O?": return F3(MeasureUnlocked().Current) + "A";
                     case "LSR1?": return ReadLsrUnlocked().ToString(Inv);
+                    // Status/error registers (always clear in the simulator).
+                    case "EER?":
+                    case "QER?":
+                    case "*ESR?":
+                    case "*STB?":
+                    case "LSE1?": return "0";
+                    case "*OPC?": return "1";
+                    case "*CLS":
+                        return null;
                     case "TRIPRST":
                         _tripBits = 0;
                         RaiseNotice("Trips cleared (TRIPRST).");

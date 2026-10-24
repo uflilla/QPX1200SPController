@@ -25,7 +25,8 @@ Note that test data is logged to the app's `powerlog.db` like real data.
 ## What it simulates
 
 - Set-points `V1`, `I1`, `OVP1`, `OCP1`, output `OP1`, and their queries in the real reply formats
-  (`12.000V`, `V1 12.000`, `VP1 61.000`, ...). `*IDN?`, `TRIPRST`, `LOCAL`, `*RST`.
+  (`12.000V`, `V1 12.000`, `VP1 61.000`, ...). `*IDN?`, `TRIPRST`, `LOCAL`, `*RST`, `*CLS`.
+- Status/error queries for the SCPI console: `EER?`, `QER?`, `*ESR?`, `*STB?`, `LSE1?` (always `0`), `*OPC?` (`1`).
 - A resistive load: CV/CC cross-over, the 1200 W power envelope (unregulated outside it),
   ±1 mV / ±1 mA measurement noise.
 - OVP/OCP trips against the programmed levels: the output switches OFF and `OP1 1` is refused

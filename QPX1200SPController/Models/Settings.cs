@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Xml.Serialization;
 using QPX1200SPController.Services;
@@ -37,6 +38,19 @@ namespace QPX1200SPController.Models
 
         /// <summary>Database rows older than this are deleted. 0 keeps everything.</summary>
         public int RetentionDays { get; set; } = 0;
+
+        /// <summary>Most recently used first.</summary>
+        public List<string> RecentIpAddresses { get; set; } = new List<string>();
+
+        public bool ConfirmOutputOn { get; set; } = true;
+
+        public AlarmSettings Alarms { get; set; } = new AlarmSettings();
+
+        /// <summary>The sequence last edited in the Sequencer tab.</summary>
+        public List<SequenceStepData> SequenceSteps { get; set; } = new List<SequenceStepData>();
+        public int SequenceCycles { get; set; } = 1;
+        public bool SequenceOutputOnAtStart { get; set; } = true;
+        public bool SequenceOutputOffAtEnd { get; set; } = true;
 
         [XmlIgnore] public double MinOvpLevel => 0;
         [XmlIgnore] public double MaxOvpLevel => 61;
@@ -95,6 +109,15 @@ namespace QPX1200SPController.Models
 
             if (string.IsNullOrWhiteSpace(LastIpAddress))
                 LastIpAddress = DefaultIpAddress;
+
+            if (RecentIpAddresses == null)
+                RecentIpAddresses = new List<string>();
+            if (Alarms == null)
+                Alarms = new AlarmSettings();
+            Alarms.DelaySeconds = Math.Max(0, Math.Min(3600, Alarms.DelaySeconds));
+            if (SequenceSteps == null)
+                SequenceSteps = new List<SequenceStepData>();
+            SequenceCycles = Math.Max(1, Math.Min(100000, SequenceCycles));
         }
 
         private static double Clamp(double value, double min, double max)

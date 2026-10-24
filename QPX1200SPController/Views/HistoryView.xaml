@@ -103,6 +103,13 @@
           Content="Auto Y"
           IsChecked="True"
           ToolTip="Fit the Y axes to the data after every zoom or pan" />
+        <CheckBox
+          Margin="0,0,16,0"
+          VerticalAlignment="Center"
+          AutomationProperties.Name="Auto refresh"
+          Content="Auto refresh"
+          IsChecked="{Binding IsAutoRefresh}"
+          ToolTip="Every 5 s, move the shown window (same length) to end now. Zooming or panning switches it off." />
 
         <Button
           Height="28"
@@ -285,6 +292,12 @@
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Result}" Value="Lost">
                       <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ErrorBrush}" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Result}" Value="Raised">
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ErrorBrush}" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Result}" Value="Cleared">
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource WarnBrush}" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Result}" Value="Connect failed">
                       <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ErrorBrush}" />

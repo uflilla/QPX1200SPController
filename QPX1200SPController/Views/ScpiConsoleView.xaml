@@ -1,0 +1,155 @@
+<UserControl
+  x:Class="QPX1200SPController.Views.ScpiConsoleView"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  d:DesignHeight="600"
+  d:DesignWidth="1000"
+  DataContext="{Binding Console, Source={StaticResource Locator}}"
+  mc:Ignorable="d">
+  <Grid Margin="10">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <materialDesign:Card
+      Margin="0,0,0,10"
+      Padding="12,10"
+      materialDesign:ElevationAssist.Elevation="Dp1">
+      <StackPanel>
+        <DockPanel>
+          <StackPanel
+            Margin="12,0,0,0"
+            VerticalAlignment="Center"
+            DockPanel.Dock="Right"
+            Orientation="Horizontal">
+            <ToggleButton
+              AutomationProperties.Name="Allow setting commands"
+              IsChecked="{Binding AllowSetCommands}"
+              Style="{StaticResource MaterialDesignSwitchToggleButton}"
+              ToolTip="Queries (ending in ?) are always allowed. Commands that change the supply need this switch." />
+            <TextBlock
+              Margin="8,0,0,0"
+              VerticalAlignment="Center"
+              Text="Allow setting commands" />
+          </StackPanel>
+          <Button
+            Margin="8,0,0,0"
+            Command="{Binding SendCommand}"
+            Content="SEND"
+            DockPanel.Dock="Right"
+            Style="{StaticResource MaterialDesignRaisedButton}" />
+          <TextBox
+            x:Name="CommandBox"
+            materialDesign:HintAssist.Hint="SCPI command, e.g. V1? or V1 12.5 (Enter sends, Up/Down recalls)"
+            AutomationProperties.Name="SCPI command"
+            FontFamily="Consolas"
+            FontSize="14"
+            PreviewKeyDown="OnCommandKeyDown"
+            Text="{Binding CommandText, UpdateSourceTrigger=PropertyChanged}" />
+        </DockPanel>
+        <WrapPanel Margin="0,10,0,0">
+          <TextBlock
+            Margin="0,0,8,0"
+            VerticalAlignment="Center"
+            FontSize="12"
+            Opacity="0.7"
+            Text="Quick queries" />
+          <ItemsControl ItemsSource="{Binding QuickQueries}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button
+                  Height="26"
+                  Margin="0,0,4,0"
+                  Padding="8,0"
+                  Command="{Binding DataContext.QuickQueryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                  CommandParameter="{Binding}"
+                  Content="{Binding}"
+                  FontFamily="Consolas"
+                  FontSize="12"
+                  Style="{StaticResource MaterialDesignOutlinedButton}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </WrapPanel>
+        <TextBlock
+          Margin="0,8,0,0"
+          FontSize="11"
+          Opacity="0.65"
+          Text="Use '.' as the decimal separator. A query the supply does not know gets no reply: the app then times out and reconnects. Everything sent is logged with source &quot;SCPI console&quot;."
+          TextWrapping="Wrap" />
+      </StackPanel>
+    </materialDesign:Card>
+
+    <materialDesign:Card
+      Grid.Row="1"
+      Padding="4"
+      materialDesign:ElevationAssist.Elevation="Dp1">
+      <DockPanel>
+        <Button
+          Margin="8,4,8,6"
+          HorizontalAlignment="Right"
+          Command="{Binding ClearCommand}"
+          Content="CLEAR"
+          DockPanel.Dock="Bottom"
+          Style="{StaticResource MaterialDesignFlatButton}" />
+        <ListBox
+          x:Name="EntryList"
+          AutomationProperties.Name="Console output"
+          FontFamily="Consolas"
+          FontSize="13"
+          HorizontalContentAlignment="Stretch"
+          ItemsSource="{Binding Entries}"
+          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="110" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="70" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Opacity="0.6" Text="{Binding Time, StringFormat='{}{0:HH:mm:ss.fff}'}" />
+                <StackPanel Grid.Column="1">
+                  <TextBlock>
+                    <Run Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Text="&gt;&gt;" />
+                    <Run Text="{Binding Command, Mode=OneWay}" />
+                  </TextBlock>
+                  <TextBlock x:Name="ReplyText" TextWrapping="Wrap">
+                    <Run Foreground="{DynamicResource CurrentBrush}" Text="&lt;&lt;" />
+                    <Run Text="{Binding Response, Mode=OneWay}" />
+                  </TextBlock>
+                  <TextBlock
+                    x:Name="ErrorText"
+                    Foreground="{DynamicResource ErrorBrush}"
+                    Text="{Binding Error, StringFormat='!! {0}'}"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
+                </StackPanel>
+                <TextBlock
+                  Grid.Column="2"
+                  HorizontalAlignment="Right"
+                  Opacity="0.6"
+                  Text="{Binding DurationText}" />
+              </Grid>
+              <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsError}" Value="True">
+                  <Setter TargetName="ReplyText" Property="Visibility" Value="Collapsed" />
+                  <Setter TargetName="ErrorText" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </materialDesign:Card>
+  </Grid>
+</UserControl>

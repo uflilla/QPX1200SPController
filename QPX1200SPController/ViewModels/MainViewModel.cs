@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using System.Windows.Threading;
 using QPX1200SPController.Models;
 using QPX1200SPController.Services;
 using ExitChoice = QPX1200SPController.Views.ExitChoice;
+using ConfirmDialog = QPX1200SPController.Views.ConfirmDialog;
 using ExitDialog = QPX1200SPController.Views.ExitDialog;
 using Settings = QPX1200SPController.Models.Settings;
 
@@ -532,6 +534,11 @@ namespace QPX1200SPController.ViewModels
             _databaseService = databaseService;
             Status = new PowerSupplyStatus();
             _ipAddress = _settings.LastIpAddress;
+            RecentIpAddresses = new ObservableCollection<string>(_settings.RecentIpAddresses);
+            if (RecentIpAddresses.Count == 0 && !string.IsNullOrWhiteSpace(_ipAddress))
+                RecentIpAddresses.Add(_ipAddress);
+            ResetCountersCommand = new RelayCommand(_ => ResetCounters());
+            ResetCounters();
             _selectedGraphTimeWindow = GraphTimeWindows[2]; // 15 min
             AttachYAxisSettings(VoltageYAxis);
             AttachYAxisSettings(CurrentYAxis);
@@ -539,12 +546,12 @@ namespace QPX1200SPController.ViewModels
 
             ConnectCommand = new RelayCommand(async _ => await Connect(), _ => _powerSupplyService.State == ConnectionState.Disconnected);
             DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => (IsConnected && IsInConfigMode) || IsReconnecting);
-            SetVoltageCommand = new RelayCommand(async _ => await SetVoltageAsync(), _ => IsConnected && IsInConfigMode);
-            SetCurrentCommand = new RelayCommand(async _ => await SetCurrentAsync(), _ => IsConnected && IsInConfigMode);
+            SetVoltageCommand = new RelayCommand(async _ => await SetVoltageAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
+            SetCurrentCommand = new RelayCommand(async _ => await SetCurrentAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
             ToggleOutputCommand = new RelayCommand(async _ => await ToggleOutput(), _ => IsConnected && IsInConfigMode);
-            SetOvpCommand = new RelayCommand(async _ => await SetOvpAsync(), _ => IsConnected && IsInConfigMode);
-            SetOcpCommand = new RelayCommand(async _ => await SetOcpAsync(), _ => IsConnected && IsInConfigMode);
-            SendMiscCommand = new RelayCommand(async p => await SendMiscCommandAsync(p as string), _ => IsConnected && IsInConfigMode);
+            SetOvpCommand = new RelayCommand(async _ => await SetOvpAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
+            SetOcpCommand = new RelayCommand(async _ => await SetOcpAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
+            SendMiscCommand = new RelayCommand(async p => await SendMiscCommandAsync(p as string), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
             ToggleControlPanelCommand = new RelayCommand(_ => IsControlPanelVisible = !IsControlPanelVisible);
             ToggleThemeCommand = new RelayCommand(_ => IsDarkTheme = !IsDarkTheme);
             SaveLimitsCommand = new RelayCommand(_ => SaveLimits());
@@ -614,11 +621,7 @@ namespace QPX1200SPController.ViewModels
             bool success = await _powerSupplyService.ConnectAsync(ip);
             if (success)
             {
-                if (_settings.LastIpAddress != ip)
-                {
-                    _settings.LastIpAddress = ip;
-                    _settings.Save();
-                }
+                RememberIpAddress(ip);
             }
             else
             {
@@ -626,6 +629,30 @@ namespace QPX1200SPController.ViewModels
                 ConnectionStatus = _lastConnectError;
                 SupplyName = string.Empty;
             }
+        }
+
+        private const int MaxRecentIpAddresses = 8;
+
+        /// <summary>Addresses connected to before, most recent first (drop-down of the IP box).</summary>
+        public ObservableCollection<string> RecentIpAddresses { get; }
+
+        private void RememberIpAddress(string ip)
+        {
+            int index = RecentIpAddresses.IndexOf(ip);
+            if (index != 0)
+            {
+                if (index > 0)
+                    RecentIpAddresses.RemoveAt(index);
+                RecentIpAddresses.Insert(0, ip);
+                while (RecentIpAddresses.Count > MaxRecentIpAddresses)
+                    RecentIpAddresses.RemoveAt(RecentIpAddresses.Count - 1);
+                // Re-selecting the text keeps the box showing the address just connected to.
+                IpAddress = ip;
+            }
+
+            _settings.LastIpAddress = ip;
+            _settings.RecentIpAddresses = RecentIpAddresses.ToList();
+            _settings.Save();
         }
 
         private void Disconnect()
@@ -765,10 +792,105 @@ namespace QPX1200SPController.ViewModels
             RaisePropertyChanged(nameof(RegulationText));
             RaisePropertyChanged(nameof(LoadText));
             LastReadingText = "Last reading " + status.Timestamp.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+            AccumulateCounters(status);
 
             _databaseService.EnqueueSample(status);
             _telemetryBuffer.Add(status.Timestamp, status.Voltage, status.Current, status.Power);
             GraphDataUpdated?.Invoke();
+        }
+
+        #endregion
+
+        #region Session counters
+
+        private DateTime _counterStart;
+        private DateTime? _lastCounterSample;
+        private double _energyWs;
+        private double _chargeAs;
+        private double _outputOnSeconds;
+
+        public ICommand ResetCountersCommand { get; }
+
+        public string CounterStartText => "since " + _counterStart.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+
+        public string EnergyText => _energyWs >= 3.6e6
+            ? string.Format(CultureInfo.InvariantCulture, "{0:F3} kWh", _energyWs / 3.6e6)
+            : string.Format(CultureInfo.InvariantCulture, "{0:F3} Wh", _energyWs / 3600);
+
+        public string ChargeText => string.Format(CultureInfo.InvariantCulture, "{0:F3} Ah", _chargeAs / 3600);
+
+        public string OutputOnTimeText
+        {
+            get
+            {
+                var t = TimeSpan.FromSeconds(_outputOnSeconds);
+                return t.TotalDays >= 1
+                    ? string.Format(CultureInfo.InvariantCulture, "{0}d {1:hh\\:mm\\:ss}", (int)t.TotalDays, t)
+                    : t.ToString("hh\\:mm\\:ss", CultureInfo.InvariantCulture);
+            }
+        }
+
+        /// <summary>
+        /// Integrates energy, charge and output-on time from the live samples (like the database
+        /// does): a gap longer than <see cref="DatabaseService.MaxGapSeconds"/> is not counted.
+        /// </summary>
+        private void AccumulateCounters(PowerSupplyStatus status)
+        {
+            if (_lastCounterSample.HasValue)
+            {
+                double dt = (status.Timestamp - _lastCounterSample.Value).TotalSeconds;
+                if (dt > 0 && dt <= DatabaseService.MaxGapSeconds && status.OutputEnabled)
+                {
+                    _energyWs += status.Power * dt;
+                    _chargeAs += status.Current * dt;
+                    _outputOnSeconds += dt;
+                }
+            }
+            _lastCounterSample = status.Timestamp;
+            RaiseCounterProperties();
+        }
+
+        private void ResetCounters()
+        {
+            _counterStart = DateTime.Now;
+            _energyWs = _chargeAs = _outputOnSeconds = 0;
+            RaiseCounterProperties();
+        }
+
+        private void RaiseCounterProperties()
+        {
+            RaisePropertyChanged(nameof(CounterStartText));
+            RaisePropertyChanged(nameof(EnergyText));
+            RaisePropertyChanged(nameof(ChargeText));
+            RaisePropertyChanged(nameof(OutputOnTimeText));
+        }
+
+        #endregion
+
+        #region Sequencer link
+
+        private bool _isSequenceRunning;
+        private string _sequenceStatusText;
+
+        /// <summary>Set by the sequencer: the manual set-point commands are disabled while it runs.</summary>
+        public bool IsSequenceRunning
+        {
+            get => _isSequenceRunning;
+            set
+            {
+                if (SetProperty(ref _isSequenceRunning, value))
+                    CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        /// <summary>The app is closing: the sequencer stops at once.</summary>
+        public event Action StopSequenceRequested;
+
+        /// <summary>Progress of a running sequence for the status bar (null when idle).</summary>
+        public string SequenceStatusText
+        {
+            get => _sequenceStatusText;
+            set => SetProperty(ref _sequenceStatusText, value);
         }
 
         #endregion
@@ -888,6 +1010,9 @@ namespace QPX1200SPController.ViewModels
         private async Task ToggleOutput()
         {
             bool enable = !Status.OutputEnabled;
+            if (enable && !ConfirmOutputOnIfRequired())
+                return;
+
             var record = await _powerSupplyService.SetOutputAsync(enable, CommandSource);
             if (!record.Success)
             {
@@ -926,6 +1051,43 @@ namespace QPX1200SPController.ViewModels
                 LoggingService.Instance.LogWarning(message, nameof(MainViewModel), nameof(VerifyOutputAsync));
             }
             return matches;
+        }
+
+        /// <summary>Asks before switching the output on (unless switched off in the settings). True = go ahead.</summary>
+        private bool ConfirmOutputOnIfRequired()
+        {
+            if (!_settings.ConfirmOutputOn)
+                return true;
+
+            var s = PowerSupplySettingStatus;
+            string details = s == null
+                ? "Set-points not read yet."
+                : string.Format(CultureInfo.InvariantCulture,
+                    "Voltage  {0,9:F3} V\nCurrent  {1,9:F3} A\nOVP      {2,9:F3} V\nOCP      {3,9:F3} A",
+                    s.SetVoltage, s.SetCurrent, s.SetOvpLevel, s.SetOcpLevel);
+            string message = "The output will be switched on with the supply's present settings.";
+            if (HasTrip(Status?.EventStatus))
+                message += " A protection trip is latched - use TRIP RESET first or the output may not switch on.";
+
+            bool ok = ConfirmDialog.Ask("Turn output ON?", message, details, "TURN ON",
+                MaterialDesignThemes.Wpf.PackIconKind.Power, offerDontAsk: true, out bool dontAskAgain);
+            if (ok && dontAskAgain)
+                ConfirmOutputOn = false;
+            return ok;
+        }
+
+        /// <summary>Ask for confirmation before the output is switched on (settings.xml).</summary>
+        public bool ConfirmOutputOn
+        {
+            get => _settings.ConfirmOutputOn;
+            set
+            {
+                if (_settings.ConfirmOutputOn == value)
+                    return;
+                _settings.ConfirmOutputOn = value;
+                _settings.Save();
+                RaisePropertyChanged();
+            }
         }
 
         private static bool HasTrip(EventStatus e)
@@ -975,6 +1137,10 @@ namespace QPX1200SPController.ViewModels
                     var choice = ExitDialog.Ask(owner, outputOn, IsConnected);
                     if (choice == ExitChoice.Cancel)
                         return false;
+
+                    // A running sequence must not send any more set-points while the app closes.
+                    if (IsSequenceRunning)
+                        StopSequenceRequested?.Invoke();
 
                     _pollTimer.Stop();
 

@@ -792,7 +792,8 @@ namespace QPX1200SPController.Services
                     var stats = total.ToStats();
                     using (var command = new SQLiteCommand(@"
                         SELECT SUM(CASE WHEN Kind = 'Command' THEN 1 ELSE 0 END),
-                               SUM(CASE WHEN Kind = 'CommError' OR Result IN ('Failed', 'Mismatch', 'Lost') THEN 1 ELSE 0 END)
+                               SUM(CASE WHEN Kind = 'CommError' OR Result IN ('Failed', 'Mismatch', 'Lost') THEN 1 ELSE 0 END),
+                               SUM(CASE WHEN Kind = 'Alarm' AND Result = 'Raised' THEN 1 ELSE 0 END)
                         FROM CommandLog WHERE T BETWEEN @T0 AND @T1;", connection))
                     {
                         AddRange(command, startTime, endTime);
@@ -802,6 +803,7 @@ namespace QPX1200SPController.Services
                             {
                                 stats.CommandCount = reader.IsDBNull(0) ? 0 : Convert.ToInt32(reader.GetValue(0), Inv);
                                 stats.ErrorCount = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1), Inv);
+                                stats.AlarmCount = reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2), Inv);
                             }
                         }
                     }

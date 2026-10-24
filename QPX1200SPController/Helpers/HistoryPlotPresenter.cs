@@ -135,11 +135,11 @@ namespace QPX1200SPController.Helpers
             // Hundreds of command lines would hide the data: above the limit only errors and
             // connection events are drawn, and the rest appear again when zoomed in.
             int hiddenCommands = 0;
-            int commands = visible.Count(m => !_isError(m) && m.Kind == ActivityRecord.KindCommand);
+            int commands = visible.Count(m => !_isError(m) && (m.Kind == ActivityRecord.KindCommand || m.Kind == ActivityRecord.KindQuery));
             if (commands > MaxDrawnCommandMarkers)
             {
                 hiddenCommands = commands;
-                visible.RemoveAll(m => !_isError(m) && m.Kind == ActivityRecord.KindCommand);
+                visible.RemoveAll(m => !_isError(m) && (m.Kind == ActivityRecord.KindCommand || m.Kind == ActivityRecord.KindQuery));
             }
 
             _markerRecords = visible.ToArray();
@@ -155,7 +155,7 @@ namespace QPX1200SPController.Helpers
                 foreach (var record in visible)
                 {
                     var line = plot.Add.VerticalLine(record.Timestamp.ToOADate(), 1.5f, MarkerColorFor(record).WithAlpha(0.75),
-                        record.Kind == ActivityRecord.KindConnection ? LinePattern.Dashed : LinePattern.Solid);
+                        record.Kind == ActivityRecord.KindConnection || record.Result == ActivityRecord.ResultCleared ? LinePattern.Dashed : LinePattern.Solid);
                     line.EnableAutoscale = false;
                     channel.MarkerLines.Add(line);
                 }
@@ -324,7 +324,7 @@ namespace QPX1200SPController.Helpers
 
         private ScottPlot.Color MarkerColorFor(ActivityRecord record)
         {
-            if (record.Result == ActivityRecord.ResultMismatch)
+            if (record.Result == ActivityRecord.ResultMismatch || record.Result == ActivityRecord.ResultCleared)
                 return MismatchColor;
             if (_isError(record))
                 return ErrorColor;

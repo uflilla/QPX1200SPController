@@ -306,6 +306,42 @@
         </DockPanel>
       </Border>
 
+      <!--  ===== Alarm banner (all tabs) =====  -->
+      <Border
+        Padding="14,6"
+        AutomationProperties.Name="Alarm banner"
+        Background="{DynamicResource ErrorBrush}"
+        DataContext="{Binding Alarms, Source={StaticResource Locator}}"
+        DockPanel.Dock="Top"
+        TextElement.Foreground="White"
+        ToolTip="{Binding BannerToolTip}"
+        Visibility="{Binding HasBanner, Converter={StaticResource BoolToVisibilityConverter}}">
+        <DockPanel>
+          <Button
+            Height="28"
+            Padding="12,0"
+            AutomationProperties.Name="Acknowledge alarms"
+            BorderBrush="White"
+            Command="{Binding AcknowledgeCommand}"
+            Content="ACKNOWLEDGE"
+            DockPanel.Dock="Right"
+            FontSize="12"
+            Foreground="White"
+            Style="{StaticResource MaterialDesignOutlinedButton}" />
+          <materialDesign:PackIcon
+            Width="20"
+            Height="20"
+            Margin="0,0,10,0"
+            VerticalAlignment="Center"
+            Kind="BellAlert" />
+          <TextBlock
+            VerticalAlignment="Center"
+            FontWeight="SemiBold"
+            Text="{Binding BannerText}"
+            TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+      </Border>
+
       <!--  ===== Status bar =====  -->
       <Border
         Padding="12,4"
@@ -368,6 +404,24 @@
                 </Style>
               </TextBlock.Style>
             </TextBlock>
+
+            <StackPanel Orientation="Horizontal" Visibility="{Binding IsSequenceRunning, Converter={StaticResource BoolToVisibilityConverter}}">
+              <Rectangle
+                Width="1"
+                Margin="14,2"
+                Fill="{DynamicResource MaterialDesign.Brush.Separator.Background}" />
+              <materialDesign:PackIcon
+                Width="14"
+                Height="14"
+                Margin="0,0,5,0"
+                VerticalAlignment="Center"
+                Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                Kind="PlaylistPlay" />
+              <TextBlock
+                VerticalAlignment="Center"
+                Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                Text="{Binding SequenceStatusText}" />
+            </StackPanel>
 
             <StackPanel Orientation="Horizontal" Visibility="{Binding IsTraceOn, Converter={StaticResource BoolToVisibilityConverter}}">
               <Rectangle
@@ -440,14 +494,18 @@
                     VerticalAlignment="Center"
                     Kind="LanConnect"
                     Opacity="0.8" />
-                  <TextBox
+                  <ComboBox
                     Width="170"
                     Margin="0,0,10,0"
                     VerticalAlignment="Center"
                     materialDesign:HintAssist.Hint="IP address"
                     AutomationProperties.Name="IP address"
                     FontSize="13"
-                    Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
+                    IsEditable="True"
+                    ItemsSource="{Binding RecentIpAddresses}"
+                    Style="{StaticResource MaterialDesignComboBox}"
+                    Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}"
+                    ToolTip="Type an address or pick a recent one" />
                   <Button
                     Margin="0,0,6,0"
                     Command="{Binding ConnectCommand}"
@@ -513,7 +571,42 @@
                     <RowDefinition Height="2*" />
                     <RowDefinition Height="2*" />
                     <RowDefinition Height="1.6*" />
+                    <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
+
+                  <!--  Session counters  -->
+                  <DockPanel
+                    Grid.Row="4"
+                    Margin="2,8,0,0"
+                    AutomationProperties.Name="Session counters"
+                    TextElement.FontSize="12">
+                    <Button
+                      Width="26"
+                      Height="26"
+                      Padding="0"
+                      AutomationProperties.Name="Reset counters"
+                      Command="{Binding ResetCountersCommand}"
+                      DockPanel.Dock="Right"
+                      Style="{StaticResource MaterialDesignIconButton}"
+                      ToolTip="Reset the session counters">
+                      <materialDesign:PackIcon Width="16" Height="16" Kind="Restart" />
+                    </Button>
+                    <WrapPanel VerticalAlignment="Center">
+                      <TextBlock Margin="0,0,14,0" ToolTip="Energy delivered while the output was on">
+                        <Run Foreground="{DynamicResource PowerBrush}" Text="Energy" />
+                        <Run FontWeight="SemiBold" Text="{Binding EnergyText, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Margin="0,0,14,0" ToolTip="Charge delivered (current × time)">
+                        <Run Foreground="{DynamicResource CurrentBrush}" Text="Charge" />
+                        <Run FontWeight="SemiBold" Text="{Binding ChargeText, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Margin="0,0,14,0" ToolTip="Time the output was on">
+                        <Run Foreground="{DynamicResource OkBrush}" Text="ON time" />
+                        <Run FontWeight="SemiBold" Text="{Binding OutputOnTimeText, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Opacity="0.6" Text="{Binding CounterStartText}" />
+                    </WrapPanel>
+                  </DockPanel>
 
                   <ItemsControl
                     Grid.Row="0"
@@ -1124,6 +1217,13 @@
                           </StackPanel>
                         </DockPanel>
 
+                        <CheckBox
+                          Margin="0,12,0,0"
+                          AutomationProperties.Name="Ask before turning the output ON"
+                          Content="Ask before turning the output ON"
+                          IsChecked="{Binding ConfirmOutputOn}"
+                          ToolTip="Saved immediately" />
+
                         <DockPanel Margin="0,12,0,0">
                           <Button
                             Command="{Binding SaveLimitsCommand}"
@@ -1145,6 +1245,97 @@
                         </DockPanel>
                       </StackPanel>
                     </Expander>
+
+                    <!--  Alarms  -->
+                    <Expander
+                      Margin="-14,0,-14,0"
+                      Padding="14,0,14,8"
+                      Background="Transparent"
+                      materialDesign:ExpanderAssist.HorizontalHeaderPadding="14,8"
+                      AutomationProperties.Name="Alarms"
+                      DataContext="{Binding Alarms, Source={StaticResource Locator}}">
+                      <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <materialDesign:PackIcon
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Kind="BellCogOutline"
+                            Opacity="0.8" />
+                          <TextBlock
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            Text="Alarms" />
+                        </StackPanel>
+                      </Expander.Header>
+                      <StackPanel>
+                        <TextBlock
+                          Margin="0,0,0,8"
+                          FontSize="11"
+                          Opacity="0.7"
+                          Text="Thresholds are checked while the output is ON. Every alarm is written to the command log and shown as a red marker in History."
+                          TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Rules}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:AlarmRule}">
+                              <DockPanel Margin="0,2">
+                                <TextBlock
+                                  Width="14"
+                                  Margin="6,0,0,0"
+                                  VerticalAlignment="Center"
+                                  DockPanel.Dock="Right"
+                                  Opacity="0.7"
+                                  Text="{Binding Unit}" />
+                                <xceed:DoubleUpDown
+                                  Width="90"
+                                  Height="28"
+                                  AutomationProperties.Name="{Binding Name}"
+                                  DockPanel.Dock="Right"
+                                  FormatString="F3"
+                                  Increment="0.1"
+                                  Minimum="0"
+                                  Value="{Binding Limit}" />
+                                <CheckBox
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.Name="{Binding Name}"
+                                  Content="{Binding Name}"
+                                  IsChecked="{Binding IsEnabled}" />
+                              </DockPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <DockPanel Margin="0,8,0,0">
+                          <xceed:IntegerUpDown
+                            Width="70"
+                            Height="28"
+                            AutomationProperties.Name="Alarm delay"
+                            DockPanel.Dock="Right"
+                            Maximum="3600"
+                            Minimum="0"
+                            Value="{Binding DelaySeconds}" />
+                          <TextBlock
+                            VerticalAlignment="Center"
+                            Text="Raise after (s)"
+                            ToolTip="A threshold must be exceeded this long before the alarm is raised" />
+                        </DockPanel>
+                        <CheckBox
+                          Margin="0,8,0,0"
+                          Content="Alarm on protection trips"
+                          IsChecked="{Binding AlarmOnTrip}" />
+                        <CheckBox
+                          Margin="0,4,0,0"
+                          Content="Alarm when the link is lost"
+                          IsChecked="{Binding AlarmOnLinkLost}" />
+                        <CheckBox
+                          Margin="0,4,0,0"
+                          Content="Play a sound"
+                          IsChecked="{Binding PlaySound}" />
+                        <CheckBox
+                          Margin="0,4,0,0"
+                          Content="Turn the output OFF on a threshold alarm"
+                          IsChecked="{Binding TurnOutputOff}"
+                          ToolTip="Software protection: the output is switched off when a threshold alarm is raised" />
+                      </StackPanel>
+                    </Expander>
                   </StackPanel>
                 </ScrollViewer>
               </materialDesign:Card>
@@ -1152,6 +1343,15 @@
           </Grid>
         </TabItem>
 
+        <TabItem AutomationProperties.Name="Sequencer">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="PlaylistPlay" />
+              <TextBlock VerticalAlignment="Center" Text="Sequencer" />
+            </StackPanel>
+          </TabItem.Header>
+          <View:SequencerView />
+        </TabItem>
         <TabItem AutomationProperties.Name="History">
           <TabItem.Header>
             <StackPanel Orientation="Horizontal">
@@ -1169,6 +1369,15 @@
             </StackPanel>
           </TabItem.Header>
           <View:DataRetrievalView />
+        </TabItem>
+        <TabItem AutomationProperties.Name="SCPI Console">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="Console" />
+              <TextBlock VerticalAlignment="Center" Text="SCPI Console" />
+            </StackPanel>
+          </TabItem.Header>
+          <View:ScpiConsoleView />
         </TabItem>
         <TabItem AutomationProperties.Name="App Logs">
           <TabItem.Header>

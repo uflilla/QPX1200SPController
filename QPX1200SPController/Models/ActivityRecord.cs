@@ -11,10 +11,14 @@ namespace QPX1200SPController.Models
         public const string KindCommand = "Command";
         public const string KindConnection = "Connection";
         public const string KindCommError = "CommError";
+        public const string KindQuery = "Query";
+        public const string KindAlarm = "Alarm";
 
         public const string ResultOk = "OK";
         public const string ResultFailed = "Failed";
         public const string ResultMismatch = "Mismatch";
+        public const string ResultRaised = "Raised";
+        public const string ResultCleared = "Cleared";
 
         // Configuration commands are held back briefly so the read-back can be added before the row is written.
         private static readonly TimeSpan MaxCompletionWait = TimeSpan.FromSeconds(5);
@@ -88,6 +92,12 @@ namespace QPX1200SPController.Models
             }
         }
 
+        /// <summary>A multi-line reply (one line per query) as "a / b".</summary>
+        private static string OneLine(string text)
+        {
+            return string.Join(" / ", (text ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
         /// <summary>Text shown in the data views and on plot markers.</summary>
         public string Summary
         {
@@ -97,6 +107,10 @@ namespace QPX1200SPController.Models
                 {
                     case KindCommand:
                         return Command + (Result == ResultOk ? "" : " (" + Result + ")");
+                    case KindAlarm:
+                        return Command + " " + (Result ?? "").ToLowerInvariant() + (string.IsNullOrEmpty(Detail) ? "" : ": " + Detail);
+                    case KindQuery:
+                        return Command + (Result == ResultOk ? " -> " + OneLine(Response) : " (" + Result + ")");
                     case KindConnection:
                         return Result + (string.IsNullOrEmpty(Detail) ? "" : ": " + Detail);
                     default:

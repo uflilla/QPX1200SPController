@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using System.Windows.Threading;
 using QPX1200SPController.Models;
 using QPX1200SPController.Services;
 
@@ -40,6 +41,8 @@ namespace QPX1200SPController.ViewModels
             ResetZoomCommand = new RelayCommand(async _ => await LoadAsync(From, To, resetAxes: true), _ => To > From);
             ExportPngCommand = new RelayCommand(_ => ExportPngRequested?.Invoke());
             ExportCsvCommand = new RelayCommand(async _ => await ExportCsvAsync(), _ => VisibleTo > VisibleFrom);
+            _autoRefreshTimer = new DispatcherTimer { Interval = AutoRefreshInterval };
+            _autoRefreshTimer.Tick += async (s, e) => await AutoRefreshAsync();
         }
 
         /// <summary>New data for the plots. resetAxes = true for a new range, false after a zoom/pan reload.</summary>
@@ -156,14 +159,16 @@ namespace QPX1200SPController.ViewModels
 
         public bool IsMarkerVisible(ActivityRecord record)
         {
-            if (IsError(record))
+            if (IsError(record) || record.Kind == ActivityRecord.KindAlarm)
                 return ShowErrors;
             return record.Kind == ActivityRecord.KindConnection ? ShowConnection : ShowCommands;
         }
 
+        /// <summary>Errors and raised alarms (red markers; counted under the "Errors" filter).</summary>
         public static bool IsError(ActivityRecord record)
         {
             return record.Kind == ActivityRecord.KindCommError
+                   || (record.Kind == ActivityRecord.KindAlarm && record.Result == ActivityRecord.ResultRaised)
                    || record.Result == ActivityRecord.ResultFailed
                    || record.Result == ActivityRecord.ResultMismatch
                    || record.Result == "Lost"
@@ -205,7 +210,48 @@ namespace QPX1200SPController.ViewModels
         /// <summary>Called (debounced) by the view after the user zoomed or panned.</summary>
         public Task OnVisibleRangeChangedAsync(DateTime from, DateTime to)
         {
+            // The user is looking at a particular moment: stop sliding the window to "now".
+            IsAutoRefresh = false;
             return LoadAsync(from, to, resetAxes: false);
+        }
+
+        /// <summary>
+        /// Every <see cref="AutoRefreshInterval"/> the shown window (same length) is moved to end now,
+        /// so the History tab can be left open as a long-term live view.
+        /// </summary>
+        public bool IsAutoRefresh
+        {
+            get => _isAutoRefresh;
+            set
+            {
+                if (!SetProperty(ref _isAutoRefresh, value))
+                    return;
+                if (value)
+                {
+                    _autoRefreshTimer.Start();
+                    _ = AutoRefreshAsync();
+                }
+                else
+                {
+                    _autoRefreshTimer.Stop();
+                }
+            }
+        }
+
+        private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(5);
+        private bool _isAutoRefresh;
+        private readonly DispatcherTimer _autoRefreshTimer;
+
+        private async Task AutoRefreshAsync()
+        {
+            if (!IsAutoRefresh || IsLoading)
+                return;
+            var span = VisibleTo > VisibleFrom ? VisibleTo - VisibleFrom : To - From;
+            if (span <= TimeSpan.Zero)
+                span = TimeSpan.FromHours(1);
+            To = DateTime.Now;
+            From = To - span;
+            await LoadAsync(From, To, resetAxes: true);
         }
 
         private async Task LoadAsync(DateTime from, DateTime to, bool resetAxes)
@@ -281,6 +327,7 @@ namespace QPX1200SPController.ViewModels
             Stats.Add(new StatRow("Output ON", FormatDuration(TimeSpan.FromSeconds(s.OutputOnSeconds))));
             Stats.Add(new StatRow("Commands", s.CommandCount.ToString("N0")));
             Stats.Add(new StatRow("Errors", s.ErrorCount.ToString("N0"), "communication errors, failed or mismatched commands, lost links"));
+            Stats.Add(new StatRow("Alarms", s.AlarmCount.ToString("N0"), "alarms raised in this window"));
         }
 
         private async Task ExportCsvAsync()

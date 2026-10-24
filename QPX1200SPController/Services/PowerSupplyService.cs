@@ -361,7 +361,28 @@ namespace QPX1200SPController.Services
             return record;
         }
 
-        private static bool IsQuery(string command)
+        /// <summary>
+        /// Sends a command typed by the operator (SCPI console). Queries are logged too, with their
+        /// response; a failed query is already logged as a communication error.
+        /// </summary>
+        public async Task<ActivityRecord> SendConsoleCommandAsync(string command, string source)
+        {
+            command = command?.Trim() ?? string.Empty;
+            if (!IsQuery(command))
+                return await SendConfigCommandAsync(command, source);
+
+            var record = new ActivityRecord(ActivityRecord.KindQuery, command) { Source = source };
+            var outcome = await ExecuteAsync(command, skipIfBusy: false);
+            record.DurationMs = outcome.DurationMs;
+            record.Response = outcome.Response;
+            record.Result = outcome.Succeeded ? ActivityRecord.ResultOk : ActivityRecord.ResultFailed;
+            record.Detail = outcome.Error;
+            if (outcome.Succeeded)
+                Record(record);
+            return record;
+        }
+
+        public static bool IsQuery(string command)
         {
             return command.Trim().EndsWith("?");
         }

@@ -63,5 +63,6 @@ namespace QPX1200SPController.Models
         public double OutputOnSeconds { get; set; }
         public int CommandCount { get; set; }
         public int ErrorCount { get; set; }
+        public int AlarmCount { get; set; }
     }
 }
