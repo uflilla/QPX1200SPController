@@ -15,23 +15,6 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <StackPanel
-      Grid.Row="0"
-      Margin="0,0,0,12"
-      HorizontalAlignment="Center"
-      Orientation="Horizontal">
-      <materialDesign:PackIcon
-        Width="28"
-        Height="28"
-        VerticalAlignment="Center"
-        Kind="TextBoxOutline" />
-      <TextBlock
-        Margin="10,0,0,0"
-        VerticalAlignment="Center"
-        Style="{StaticResource MaterialDesignHeadline5TextBlock}"
-        Text="App Logs" />
-    </StackPanel>
-
     <materialDesign:Card
       Grid.Row="1"
       Margin="0,0,0,12"
@@ -52,6 +35,7 @@
         </Button>
         <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
           <ToggleButton
+            AutomationProperties.Name="Trace mode"
             IsChecked="{Binding IsTraceEnabled}"
             Style="{StaticResource MaterialDesignSwitchToggleButton}"
             ToolTip="Capture every command and response to a trace file" />
@@ -91,7 +75,7 @@
         Style="{StaticResource MaterialDesignDataGrid}">
         <DataGrid.Columns>
           <DataGridTextColumn
-            Width="160"
+            Width="180"
             Binding="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff}'}"
             Header="Timestamp" />
           <DataGridTextColumn

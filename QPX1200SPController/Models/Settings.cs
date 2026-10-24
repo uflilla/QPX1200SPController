@@ -32,6 +32,7 @@ namespace QPX1200SPController.Models
         public double MaxCurrent { get; set; } = InstrumentMaxCurrent;
 
         public double SampleRateHz { get; set; } = 1.0;
+        public bool DarkTheme { get; set; } = true;
         public string LastIpAddress { get; set; } = DefaultIpAddress;
 
         /// <summary>Database rows older than this are deleted. 0 keeps everything.</summary>

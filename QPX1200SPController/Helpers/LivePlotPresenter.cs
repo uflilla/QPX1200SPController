@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,66 +11,57 @@ using System.Windows.Media.Effects;
 using ScottPlot;
 using ScottPlot.WPF;
 using QPX1200SPController.Models;
+using QPX1200SPController.Services;
 using QPX1200SPController.ViewModels;
 
 namespace QPX1200SPController.Helpers
 {
     /// <summary>
-    /// Updates a ScottPlot 5 WpfPlot from in-memory telemetry samples.
+    /// Updates a ScottPlot 5 WpfPlot from in-memory telemetry samples. While following live data the
+    /// axes fit the newest samples; otherwise the user's zoom and pan are left alone.
     /// </summary>
     public sealed class LivePlotPresenter : IDisposable
     {
         private const float CursorSnapPixels = 28f;
+        private const double DragThresholdPixels = 4;
 
         private readonly WpfPlot _plot;
-        private readonly string _title;
-        private readonly string _yLabel;
         private readonly string _unit;
         private readonly string _valueFormat;
         private readonly Func<TelemetrySample, double> _valueSelector;
-        private readonly ScottPlot.Color _lineColor;
+        private readonly Func<ThemePalette, System.Windows.Media.Color> _colorSelector;
         private readonly PlotYAxisSettings _yAxis;
         private readonly Popup _cursorPopup;
         private readonly TextBlock _valueText;
         private readonly TextBlock _timeText;
 
+        private ScottPlot.Color _lineColor;
         private ScottPlot.Plottables.Scatter _scatter;
         private DateTime[] _timestamps = Array.Empty<DateTime>();
         private Point? _lastMousePos;
+        private Point? _pressPos;
         private Window _hostWindow;
         private bool _disposed;
 
         public LivePlotPresenter(
             WpfPlot plot,
-            string title,
             string yLabel,
             string unit,
             string valueFormat,
             Func<TelemetrySample, double> valueSelector,
-            ScottPlot.Color lineColor,
+            Func<ThemePalette, System.Windows.Media.Color> colorSelector,
             PlotYAxisSettings yAxis)
         {
             _plot = plot ?? throw new ArgumentNullException(nameof(plot));
-            _title = title;
-            _yLabel = yLabel;
             _unit = unit;
             _valueFormat = valueFormat;
             _valueSelector = valueSelector;
-            _lineColor = lineColor;
+            _colorSelector = colorSelector;
             _yAxis = yAxis ?? throw new ArgumentNullException(nameof(yAxis));
 
-            _valueText = new TextBlock
-            {
-                FontWeight = FontWeights.Bold,
-                FontSize = 13,
-                Foreground = new SolidColorBrush(ToWpfColor(_lineColor))
-            };
-            _timeText = new TextBlock
-            {
-                FontSize = 11,
-                Foreground = Brushes.Black,
-                Margin = new Thickness(0, 2, 0, 0)
-            };
+            _valueText = new TextBlock { FontWeight = FontWeights.Bold, FontSize = 13 };
+            _timeText = new TextBlock { FontSize = 11, Margin = new Thickness(0, 2, 0, 0) };
+            _timeText.SetResourceReference(TextBlock.ForegroundProperty, "MaterialDesign.Brush.Foreground");
 
             var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -81,10 +73,8 @@ namespace QPX1200SPController.Helpers
 
             var border = new Border
             {
-                Background = Brushes.White,
-                BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xDD, 0xDD, 0xDD)),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(10, 6, 10, 6),
                 Child = grid,
                 IsHitTestVisible = false,
@@ -96,6 +86,8 @@ namespace QPX1200SPController.Helpers
                     Color = System.Windows.Media.Colors.Black
                 }
             };
+            border.SetResourceReference(Border.BackgroundProperty, "MaterialDesign.Brush.Card.Background");
+            border.SetResourceReference(Border.BorderBrushProperty, "MaterialDesign.Brush.Separator.Background");
 
             _cursorPopup = new Popup
             {
@@ -110,40 +102,94 @@ namespace QPX1200SPController.Helpers
 
             _plot.MouseMove += OnPlotMouseMove;
             _plot.MouseLeave += OnPlotMouseLeave;
+            _plot.PreviewMouseDown += OnPlotMouseDown;
+            _plot.PreviewMouseUp += OnPlotMouseUp;
+            _plot.PreviewMouseWheel += OnPlotMouseWheel;
             _hostWindow = Window.GetWindow(_plot);
             if (_hostWindow != null)
                 _hostWindow.Deactivated += OnHostDeactivated;
 
-            ConfigureAxes();
+            var axes = _plot.Plot.Axes;
+            PlotStyling.UseTimeAxis(_plot.Plot);
+            axes.Left.Label.Text = yLabel;
+            axes.Left.Label.FontSize = 15;
+            axes.Left.Label.Bold = true;
+            axes.Left.TickLabelStyle.FontSize = 13;
+            axes.Bottom.TickLabelStyle.FontSize = 13;
+            axes.Bottom.Label.Text = string.Empty;
+            // Same Y-axis width on the three plots so their time axes line up.
+            axes.Left.MinimumSize = 76;
+            axes.Left.MaximumSize = 76;
+            ApplyTheme();
         }
 
-        public void Update(IReadOnlyList<TelemetrySample> samples)
-        {
-            _plot.Plot.Clear();
-            _scatter = null;
-            _timestamps = Array.Empty<DateTime>();
-            ConfigureAxes();
+        /// <summary>The user zoomed or panned this plot (mouse wheel or drag).</summary>
+        public event Action UserNavigated;
 
-            if (samples == null || samples.Count == 0)
+        /// <summary>
+        /// Shows <paramref name="samples"/>. With <paramref name="follow"/> the axes fit the data
+        /// (or <paramref name="window"/> when there is none); otherwise the current view is kept.
+        /// </summary>
+        public void Update(IReadOnlyList<TelemetrySample> samples, bool follow, TimeSpan? window)
+        {
+            if (_scatter != null)
             {
-                ApplyYAxisScale();
-                _plot.Refresh();
-                UpdateCursorPopup();
-                return;
+                _plot.Plot.Remove(_scatter);
+                _scatter = null;
+            }
+            _timestamps = Array.Empty<DateTime>();
+
+            if (samples != null && samples.Count > 0)
+            {
+                double[] xs = samples.Select(s => s.Timestamp.ToOADate()).ToArray();
+                double[] ys = samples.Select(_valueSelector).ToArray();
+                _timestamps = samples.Select(s => s.Timestamp).ToArray();
+
+                _scatter = _plot.Plot.Add.Scatter(xs, ys);
+                _scatter.Color = _lineColor;
+                _scatter.LineWidth = 1.5f;
+                _scatter.MarkerSize = 0;
             }
 
-            double[] xs = samples.Select(s => s.Timestamp.ToOADate()).ToArray();
-            double[] ys = samples.Select(_valueSelector).ToArray();
-            _timestamps = samples.Select(s => s.Timestamp).ToArray();
+            if (follow)
+            {
+                if (_scatter != null)
+                {
+                    _plot.Plot.Axes.AutoScale();
+                }
+                else
+                {
+                    var now = DateTime.Now;
+                    _plot.Plot.Axes.SetLimitsX((now - (window ?? TimeSpan.FromMinutes(15))).ToOADate(), now.ToOADate());
+                    _plot.Plot.Axes.SetLimitsY(0, 1);
+                }
+                ApplyManualY();
+            }
 
-            _scatter = _plot.Plot.Add.Scatter(xs, ys);
-            _scatter.Color = _lineColor;
-            _scatter.LineWidth = 1.5f;
-            _scatter.MarkerSize = 0;
-
-            ApplyYAxisScale();
             _plot.Refresh();
             UpdateCursorPopup();
+        }
+
+        /// <summary>Applies the Y-axis mode after the user changed it (fits the data in Auto mode).</summary>
+        public void ApplyYAxis()
+        {
+            if (!ApplyManualY() && _scatter != null)
+                _plot.Plot.Axes.AutoScaleY();
+            _plot.Refresh();
+        }
+
+        public void ApplyTheme()
+        {
+            var palette = ThemeService.Instance.Palette;
+            var accent = _colorSelector(palette);
+            _lineColor = PlotStyling.ToScottPlot(accent);
+
+            PlotStyling.ApplyTheme(_plot.Plot);
+            _plot.Plot.Axes.Left.Label.ForeColor = _lineColor;
+            if (_scatter != null)
+                _scatter.Color = _lineColor;
+            _valueText.Foreground = new SolidColorBrush(accent);
+            _plot.Refresh();
         }
 
         public void Dispose()
@@ -154,47 +200,56 @@ namespace QPX1200SPController.Helpers
 
             _plot.MouseMove -= OnPlotMouseMove;
             _plot.MouseLeave -= OnPlotMouseLeave;
+            _plot.PreviewMouseDown -= OnPlotMouseDown;
+            _plot.PreviewMouseUp -= OnPlotMouseUp;
+            _plot.PreviewMouseWheel -= OnPlotMouseWheel;
             if (_hostWindow != null)
                 _hostWindow.Deactivated -= OnHostDeactivated;
             HideCursorPopup();
         }
 
-        private void ApplyYAxisScale()
+        /// <summary>Sets the manual Y range if that mode is selected. Returns false in Auto mode.</summary>
+        private bool ApplyManualY()
         {
-            _plot.Plot.Axes.AutoScale();
             if (!_yAxis.IsManual)
-                return;
+                return false;
 
             double lo = Math.Min(_yAxis.YMin, _yAxis.YMax);
             double hi = Math.Max(_yAxis.YMin, _yAxis.YMax);
             if (hi - lo < 1e-12)
                 hi = lo + 1;
             _plot.Plot.Axes.SetLimitsY(lo, hi);
+            return true;
         }
 
-        private void ConfigureAxes()
+        private void OnPlotMouseWheel(object sender, MouseWheelEventArgs e)
         {
-            const float axisFontSize = 24; // 2x ScottPlot default (12)
-            const float titleFontSize = 32; // 2x typical ScottPlot title (16)
+            UserNavigated?.Invoke();
+        }
 
-            _plot.Plot.FigureBackground.Color = ScottPlot.Color.FromHex("#FAFAFA");
-            _plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFF");
-            _plot.Plot.Title(_title);
-            _plot.Plot.Axes.Title.Label.FontSize = titleFontSize;
-            _plot.Plot.Axes.Title.Label.ForeColor = _lineColor;
-            _plot.Plot.Axes.Left.Label.Text = _yLabel;
-            _plot.Plot.Axes.Bottom.Label.Text = "Time";
-            _plot.Plot.Axes.DateTimeTicksBottom();
+        private void OnPlotMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            _pressPos = e.GetPosition(_plot);
+        }
 
-            _plot.Plot.Axes.Left.Label.FontSize = axisFontSize;
-            _plot.Plot.Axes.Bottom.Label.FontSize = axisFontSize;
-            _plot.Plot.Axes.Left.TickLabelStyle.FontSize = axisFontSize;
-            _plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = axisFontSize;
+        private void OnPlotMouseUp(object sender, MouseButtonEventArgs e)
+        {
+            _pressPos = null;
         }
 
         private void OnPlotMouseMove(object sender, MouseEventArgs e)
         {
             _lastMousePos = e.GetPosition(_plot);
+
+            // A drag with any button pans (left) or zooms (right) the plot.
+            bool pressed = e.LeftButton == MouseButtonState.Pressed || e.RightButton == MouseButtonState.Pressed
+                           || e.MiddleButton == MouseButtonState.Pressed;
+            if (pressed && _pressPos.HasValue && (_lastMousePos.Value - _pressPos.Value).Length > DragThresholdPixels)
+            {
+                _pressPos = null;
+                UserNavigated?.Invoke();
+            }
+
             UpdateCursorPopup();
         }
 
@@ -237,8 +292,8 @@ namespace QPX1200SPController.Helpers
                 return;
             }
 
-            _valueText.Text = $"{nearest.Y.ToString(_valueFormat)} {_unit}";
-            _timeText.Text = _timestamps[nearest.Index].ToString("yyyy-MM-dd HH:mm:ss.fff");
+            _valueText.Text = $"{nearest.Y.ToString(_valueFormat, CultureInfo.InvariantCulture)} {_unit}";
+            _timeText.Text = _timestamps[nearest.Index].ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
 
             const double popupWidth = 210;
             const double popupHeight = 56;
@@ -258,11 +313,6 @@ namespace QPX1200SPController.Helpers
         {
             if (_cursorPopup.IsOpen)
                 _cursorPopup.IsOpen = false;
-        }
-
-        private static System.Windows.Media.Color ToWpfColor(ScottPlot.Color color)
-        {
-            return System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B);
         }
     }
 }

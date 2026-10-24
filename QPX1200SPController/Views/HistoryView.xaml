@@ -82,19 +82,19 @@
           Margin="0,0,8,0"
           VerticalAlignment="Center"
           Content="Commands"
-          Foreground="#1E88E5"
+          Foreground="{DynamicResource CommandMarkerBrush}"
           IsChecked="{Binding ShowCommands}" />
         <CheckBox
           Margin="0,0,8,0"
           VerticalAlignment="Center"
           Content="Connection"
-          Foreground="#616161"
+          Foreground="{DynamicResource ConnectionMarkerBrush}"
           IsChecked="{Binding ShowConnection}" />
         <CheckBox
           Margin="0,0,16,0"
           VerticalAlignment="Center"
           Content="Errors"
-          Foreground="#E53935"
+          Foreground="{DynamicResource ErrorBrush}"
           IsChecked="{Binding ShowErrors}" />
         <CheckBox
           x:Name="AutoYCheckBox"
@@ -149,7 +149,7 @@
         Grid.Column="0"
         Padding="4"
         materialDesign:ElevationAssist.Elevation="Dp2">
-        <Grid x:Name="PlotsContainer" Background="White">
+        <Grid x:Name="PlotsContainer" Background="{DynamicResource MaterialDesign.Brush.Card.Background}">
           <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="*" />
@@ -235,7 +235,7 @@
               Margin="8,0,8,6"
               DockPanel.Dock="Top"
               FontSize="11"
-              Foreground="#E65100"
+              Foreground="{DynamicResource WarnBrush}"
               Text="{Binding MarkerNote}"
               TextWrapping="Wrap">
               <TextBlock.Style>
@@ -262,7 +262,7 @@
                       Height="8"
                       Margin="0,0,6,0"
                       VerticalAlignment="Center"
-                      Fill="#1E88E5" />
+                      Fill="{DynamicResource CommandMarkerBrush}" />
                     <TextBlock
                       FontFamily="Consolas"
                       FontSize="11"
@@ -275,19 +275,19 @@
                   </StackPanel>
                   <DataTemplate.Triggers>
                     <DataTrigger Binding="{Binding Kind}" Value="Connection">
-                      <Setter TargetName="Dot" Property="Fill" Value="#757575" />
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ConnectionMarkerBrush}" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Result}" Value="Mismatch">
-                      <Setter TargetName="Dot" Property="Fill" Value="#FB8C00" />
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource WarnBrush}" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Result}" Value="Failed">
-                      <Setter TargetName="Dot" Property="Fill" Value="#E53935" />
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ErrorBrush}" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Result}" Value="Lost">
-                      <Setter TargetName="Dot" Property="Fill" Value="#E53935" />
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ErrorBrush}" />
                     </DataTrigger>
                     <DataTrigger Binding="{Binding Result}" Value="Connect failed">
-                      <Setter TargetName="Dot" Property="Fill" Value="#E53935" />
+                      <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource ErrorBrush}" />
                     </DataTrigger>
                   </DataTemplate.Triggers>
                 </DataTemplate>

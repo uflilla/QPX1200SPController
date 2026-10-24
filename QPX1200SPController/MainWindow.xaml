@@ -7,18 +7,19 @@
   xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
   xmlns:scottPlot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
+  xmlns:vm="clr-namespace:QPX1200SPController.ViewModels"
   xmlns:xceed="http://schemas.xceed.com/wpf/xaml/toolkit"
   Title="QPX1200SP Power Supply Controller"
-  Width="1280"
-  Height="800"
-  MinWidth="960"
-  MinHeight="640"
-  Background="{DynamicResource MaterialDesignPaper}"
+  Width="1360"
+  Height="860"
+  MinWidth="1000"
+  MinHeight="660"
+  Background="{DynamicResource MaterialDesign.Brush.Background}"
   DataContext="{Binding Main, Source={StaticResource Locator}}"
   FontFamily="{materialDesign:MaterialDesignFont}"
   Loaded="MainWindow_OnLoaded"
   Style="{StaticResource MaterialDesignWindow}"
-  TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+  TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
   WindowStartupLocation="CenterScreen"
   mc:Ignorable="d">
 
@@ -27,196 +28,398 @@
       x:Key="CompactRaisedButton"
       BasedOn="{StaticResource MaterialDesignRaisedButton}"
       TargetType="Button">
-      <Setter Property="MinHeight" Value="28" />
-      <Setter Property="Height" Value="28" />
-      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Padding" Value="14,0" />
       <Setter Property="FontSize" Value="12" />
     </Style>
     <Style
       x:Key="CompactOutlinedButton"
       BasedOn="{StaticResource MaterialDesignOutlinedButton}"
       TargetType="Button">
-      <Setter Property="MinHeight" Value="28" />
-      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="12,0" />
       <Setter Property="FontSize" Value="12" />
-    </Style>
-    <Style
-      x:Key="CompactTextBox"
-      BasedOn="{StaticResource MaterialDesignTextBox}"
-      TargetType="TextBox">
-      <Setter Property="MinHeight" Value="28" />
-      <Setter Property="Height" Value="28" />
-      <Setter Property="Padding" Value="4,2" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="FontSize" Value="13" />
     </Style>
     <Style
       x:Key="CompactTabItem"
       BasedOn="{StaticResource MaterialDesignTabItem}"
       TargetType="TabItem">
-      <Setter Property="Padding" Value="14,4" />
-      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="16,6" />
+      <Setter Property="MinHeight" Value="36" />
       <Setter Property="FontSize" Value="13" />
     </Style>
+
+    <!--  Small rounded label used for the header chips and the status-register indicators  -->
+    <Style x:Key="ChipBorder" TargetType="Border">
+      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="Margin" Value="0,14,0,6" />
+    </Style>
+
+    <Style x:Key="SetButton" BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinWidth" Value="56" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Content" Value="SET" />
+    </Style>
+
+    <Style x:Key="SetPointInput" TargetType="xceed:DoubleUpDown" BasedOn="{StaticResource {x:Type xceed:DoubleUpDown}}">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FormatString" Value="F3" />
+      <Setter Property="Increment" Value="0.1" />
+      <Setter Property="TextAlignment" Value="Right" />
+    </Style>
+
+    <!--  Overlay with the Y-axis mode on top of each live plot  -->
+    <Style x:Key="PlotOverlay" TargetType="Border">
+      <Setter Property="Margin" Value="0,6,8,0" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Panel.ZIndex" Value="1" />
+      <Setter Property="Background" Value="{DynamicResource OverlayBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource OverlayBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+
+    <DataTemplate x:Key="YAxisOverlayTemplate" DataType="{x:Type vm:PlotYAxisSettings}">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock
+          Margin="0,0,6,0"
+          VerticalAlignment="Center"
+          FontSize="11"
+          Opacity="0.75"
+          Text="Y" />
+        <ComboBox
+          Width="78"
+          VerticalAlignment="Center"
+          FontSize="12"
+          ItemsSource="{Binding DataContext.YAxisScaleModes, RelativeSource={RelativeSource AncestorType=Window}}"
+          SelectedItem="{Binding Mode}"
+          Style="{StaticResource MaterialDesignComboBox}" />
+        <StackPanel
+          Margin="6,0,0,0"
+          Orientation="Horizontal"
+          Visibility="{Binding IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
+          <xceed:DoubleUpDown
+            Width="70"
+            VerticalAlignment="Center"
+            FontSize="12"
+            FormatString="F2"
+            Increment="0.1"
+            ToolTip="Y-axis lower value"
+            Value="{Binding YMin, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBlock
+            Margin="4,0"
+            VerticalAlignment="Center"
+            Opacity="0.75"
+            Text="–" />
+          <xceed:DoubleUpDown
+            Width="70"
+            VerticalAlignment="Center"
+            FontSize="12"
+            FormatString="F2"
+            Increment="0.1"
+            ToolTip="Y-axis upper value"
+            Value="{Binding YMax, UpdateSourceTrigger=PropertyChanged}" />
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
   </Window.Resources>
 
   <materialDesign:DialogHost Identifier="RootDialog">
     <DockPanel>
-      <materialDesign:ColorZone
-        Padding="8,4"
-        materialDesign:ElevationAssist.Elevation="Dp2"
+
+      <!--  ===== Header =====  -->
+      <Border
+        Padding="14,8"
+        Background="{DynamicResource HeaderBrush}"
         DockPanel.Dock="Top"
-        Mode="PrimaryMid">
+        TextElement.Foreground="White">
         <DockPanel>
-          <StackPanel
-            VerticalAlignment="Center"
-            DockPanel.Dock="Left"
-            Orientation="Horizontal">
+          <Border
+            Width="36"
+            Height="36"
+            Background="#33FFFFFF"
+            CornerRadius="18"
+            DockPanel.Dock="Left">
             <materialDesign:PackIcon
-              Width="20"
-              Height="20"
+              Width="22"
+              Height="22"
+              HorizontalAlignment="Center"
               VerticalAlignment="Center"
+              Foreground="#FFD54F"
               Kind="Flash" />
-            <TextBlock
-              Margin="8,0,0,0"
-              VerticalAlignment="Center"
-              FontSize="14"
-              FontWeight="SemiBold"
-              Text="QPX1200SP" />
-            <TextBlock
-              Margin="8,0,0,0"
-              VerticalAlignment="Center"
-              FontSize="12"
-              Opacity="0.85"
-              Text="Monitoring &amp; Control" />
-          </StackPanel>
-          <TextBlock
+          </Border>
+          <StackPanel
             Margin="12,0,0,0"
             VerticalAlignment="Center"
+            DockPanel.Dock="Left">
+            <TextBlock FontSize="16" FontWeight="SemiBold">
+              <Run Text="QPX1200SP" />
+              <Run FontSize="13" FontWeight="Normal" Text="  Monitoring &amp; Control" />
+            </TextBlock>
+            <TextBlock
+              FontSize="11"
+              Opacity="0.8"
+              Text="{Binding SupplyName, TargetNullValue='No supply connected', FallbackValue='No supply connected'}"
+              TextTrimming="CharacterEllipsis">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding SupplyName}" Value="">
+                      <Setter Property="Text" Value="No supply connected" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+          </StackPanel>
+
+          <Button
+            Width="36"
+            Height="36"
+            Margin="12,0,0,0"
+            Padding="0"
+            AutomationProperties.Name="Switch theme"
+            Command="{Binding ToggleThemeCommand}"
             DockPanel.Dock="Right"
-            FontSize="12"
-            FontWeight="SemiBold"
-            Text="{Binding ConnectionStatus}">
-            <TextBlock.Style>
-              <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="TextBlock">
-                <Setter Property="Foreground" Value="#FFCDD2" />
+            Foreground="White"
+            Style="{StaticResource MaterialDesignIconButton}"
+            ToolTip="Switch between dark and light theme">
+            <materialDesign:PackIcon Width="20" Height="20">
+              <materialDesign:PackIcon.Style>
+                <Style TargetType="materialDesign:PackIcon">
+                  <Setter Property="Kind" Value="WeatherSunny" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsDarkTheme}" Value="False">
+                      <Setter Property="Kind" Value="WeatherNight" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </materialDesign:PackIcon.Style>
+            </materialDesign:PackIcon>
+          </Button>
+
+          <!--  Output chip  -->
+          <Border
+            Margin="10,0,0,0"
+            AutomationProperties.Name="Output state"
+            DockPanel.Dock="Right">
+            <Border.Style>
+              <Style BasedOn="{StaticResource ChipBorder}" TargetType="Border">
+                <Setter Property="Background" Value="#26FFFFFF" />
+                <Setter Property="BorderBrush" Value="#66FFFFFF" />
                 <Style.Triggers>
-                  <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                    <Setter Property="Foreground" Value="#C8E6C9" />
-                  </DataTrigger>
-                  <DataTrigger Binding="{Binding IsReconnecting}" Value="True">
-                    <Setter Property="Foreground" Value="#FFE082" />
-                  </DataTrigger>
+                  <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                      <Condition Binding="{Binding IsConnected}" Value="True" />
+                      <Condition Binding="{Binding Status.OutputEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="#43A047" />
+                    <Setter Property="BorderBrush" Value="#A5D6A7" />
+                  </MultiDataTrigger>
                 </Style.Triggers>
               </Style>
-            </TextBlock.Style>
-          </TextBlock>
-        </DockPanel>
-      </materialDesign:ColorZone>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon
+                Width="14"
+                Height="14"
+                Margin="0,0,5,0"
+                VerticalAlignment="Center"
+                Kind="Power" />
+              <TextBlock FontSize="12" FontWeight="SemiBold">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Text" Value="OUTPUT ---" />
+                    <Style.Triggers>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding IsConnected}" Value="True" />
+                          <Condition Binding="{Binding Status.OutputEnabled}" Value="True" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Text" Value="OUTPUT ON" />
+                      </MultiDataTrigger>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding IsConnected}" Value="True" />
+                          <Condition Binding="{Binding Status.OutputEnabled}" Value="False" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Text" Value="OUTPUT OFF" />
+                      </MultiDataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </StackPanel>
+          </Border>
 
+          <!--  Connection chip  -->
+          <Border DockPanel.Dock="Right" AutomationProperties.Name="Connection state">
+            <Border.Style>
+              <Style BasedOn="{StaticResource ChipBorder}" TargetType="Border">
+                <Setter Property="Background" Value="#26FFFFFF" />
+                <Setter Property="BorderBrush" Value="#66FFFFFF" />
+              </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+              <Ellipse
+                Width="9"
+                Height="9"
+                Margin="0,0,6,0"
+                VerticalAlignment="Center">
+                <Ellipse.Style>
+                  <Style TargetType="Ellipse">
+                    <Setter Property="Fill" Value="#EF9A9A" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                        <Setter Property="Fill" Value="#69F0AE" />
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsReconnecting}" Value="True">
+                        <Setter Property="Fill" Value="#FFD740" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Ellipse.Style>
+              </Ellipse>
+              <TextBlock
+                FontSize="12"
+                FontWeight="SemiBold"
+                Text="{Binding ConnectionStatus}" />
+            </StackPanel>
+          </Border>
+          <Grid />
+        </DockPanel>
+      </Border>
+
+      <!--  ===== Status bar =====  -->
+      <Border
+        Padding="12,4"
+        Background="{DynamicResource MaterialDesign.Brush.Card.Background}"
+        BorderBrush="{DynamicResource MaterialDesign.Brush.Separator.Background}"
+        BorderThickness="0,1,0,0"
+        DockPanel.Dock="Bottom"
+        TextElement.FontSize="12">
+        <DockPanel>
+          <TextBlock
+            DockPanel.Dock="Right"
+            Opacity="0.6"
+            Text="{Binding VersionText}" />
+          <StackPanel Orientation="Horizontal">
+            <materialDesign:PackIcon
+              Width="14"
+              Height="14"
+              Margin="0,0,5,0"
+              VerticalAlignment="Center"
+              Kind="ClockOutline"
+              Opacity="0.7" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding LastReadingText}" />
+            <TextBlock
+              Margin="6,0,0,0"
+              VerticalAlignment="Center"
+              Opacity="0.7"
+              Text="{Binding SelectedSampleRate.DisplayName, StringFormat='({0})'}" />
+
+            <Rectangle
+              Width="1"
+              Margin="14,2"
+              Fill="{DynamicResource MaterialDesign.Brush.Separator.Background}" />
+            <materialDesign:PackIcon
+              Width="14"
+              Height="14"
+              Margin="0,0,5,0"
+              VerticalAlignment="Center">
+              <materialDesign:PackIcon.Style>
+                <Style TargetType="materialDesign:PackIcon">
+                  <Setter Property="Kind" Value="DatabaseCheckOutline" />
+                  <Setter Property="Foreground" Value="{DynamicResource OkBrush}" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsDatabaseFailing}" Value="True">
+                      <Setter Property="Kind" Value="DatabaseAlertOutline" />
+                      <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </materialDesign:PackIcon.Style>
+            </materialDesign:PackIcon>
+            <TextBlock VerticalAlignment="Center" Text="{Binding DatabaseStatusText}">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsDatabaseFailing}" Value="True">
+                      <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+                      <Setter Property="FontWeight" Value="SemiBold" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+
+            <StackPanel Orientation="Horizontal" Visibility="{Binding IsTraceOn, Converter={StaticResource BoolToVisibilityConverter}}">
+              <Rectangle
+                Width="1"
+                Margin="14,2"
+                Fill="{DynamicResource MaterialDesign.Brush.Separator.Background}" />
+              <materialDesign:PackIcon
+                Width="14"
+                Height="14"
+                Margin="0,0,5,0"
+                VerticalAlignment="Center"
+                Foreground="{DynamicResource WarnBrush}"
+                Kind="RecordRec" />
+              <TextBlock
+                VerticalAlignment="Center"
+                Foreground="{DynamicResource WarnBrush}"
+                Text="{Binding TraceStatusText}" />
+            </StackPanel>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!--  ===== Tabs =====  -->
       <TabControl
         Padding="0"
-        ItemContainerStyle="{StaticResource CompactTabItem}"
         materialDesign:ColorZoneAssist.Mode="Standard"
+        ItemContainerStyle="{StaticResource CompactTabItem}"
         Style="{StaticResource MaterialDesignTabControl}">
-        <TabItem Header="Monitoring &amp; Control">
+        <TabItem AutomationProperties.Name="Monitoring &amp; Control">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="Gauge" />
+              <TextBlock VerticalAlignment="Center" Text="Monitoring &amp; Control" />
+            </StackPanel>
+          </TabItem.Header>
           <Grid>
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
-              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!--  Connection bar  -->
             <materialDesign:Card
               Grid.Row="0"
-              Margin="8,6,8,4"
-              Padding="8,4"
-              materialDesign:ElevationAssist.Elevation="Dp2">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="180" />
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <TextBlock
-                  Grid.Column="0"
-                  Margin="0,0,8,0"
-                  VerticalAlignment="Center"
-                  FontSize="12"
-                  FontWeight="SemiBold"
-                  Text="IP Address" />
-                <TextBox
-                  Grid.Column="1"
-                  Margin="0,0,8,0"
-                  VerticalAlignment="Center"
-                  Style="{StaticResource CompactTextBox}"
-                  Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
+              Margin="10,8,10,4"
+              Padding="12,6"
+              materialDesign:ElevationAssist.Elevation="Dp1">
+              <DockPanel>
                 <Button
-                  Grid.Column="2"
-                  Margin="0,0,6,0"
-                  Command="{Binding ConnectCommand}"
-                  Content="CONNECT"
-                  IsEnabled="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}"
-                  Style="{StaticResource CompactRaisedButton}" />
-                <StackPanel Grid.Column="3" Orientation="Horizontal">
-                  <Button
-                    Margin="0,0,12,0"
-                    Command="{Binding DisconnectCommand}"
-                    Content="DISCONNECT"
-                    Style="{StaticResource CompactOutlinedButton}" />
-                  <TextBlock
-                    Margin="0,0,6,0"
-                    VerticalAlignment="Center"
-                    FontSize="12"
-                    FontWeight="SemiBold"
-                    Text="Sample rate" />
-                  <ComboBox
-                    Width="80"
-                    Margin="0,0,12,0"
-                    VerticalAlignment="Center"
-                    DisplayMemberPath="DisplayName"
-                    FontSize="12"
-                    ItemsSource="{Binding SampleRates}"
-                    SelectedItem="{Binding SelectedSampleRate}"
-                    Style="{StaticResource MaterialDesignComboBox}"
-                    ToolTip="How often the supply is read and logged to the database" />
-                </StackPanel>
-                <StackPanel Grid.Column="6" Orientation="Horizontal">
-                  <TextBlock
-                    VerticalAlignment="Center"
-                    FontSize="13"
-                    FontWeight="SemiBold"
-                    Text="OUTPUT:" />
-                  <TextBlock
-                    Margin="8,0,0,0"
-                    VerticalAlignment="Center"
-                    FontSize="13"
-                    FontWeight="Bold"
-                    Foreground="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToForegroundConverter}}"
-                    Text="{Binding Status.OutputEnabled, Converter={StaticResource BoolToOnOffConverter}}" />
-                </StackPanel>
-
-                <TextBlock
-                  Grid.Column="5"
                   Margin="8,0,0,0"
-                  VerticalAlignment="Center"
-                  FontSize="12"
-                  Opacity="0.8"
-                  Text="{Binding SupplyName, TargetNullValue='---'}"
-                  TextTrimming="CharacterEllipsis"
-                  ToolTip="{Binding SupplyName}" />
-                <Button
-                  Grid.Column="4"
-                  Margin="0,0,8,0"
-                  HorizontalAlignment="Right"
                   Command="{Binding ToggleControlPanelCommand}"
+                  DockPanel.Dock="Right"
                   Style="{StaticResource CompactOutlinedButton}"
                   ToolTip="{Binding ControlPanelToggleText}">
                   <StackPanel Orientation="Horizontal">
@@ -225,178 +428,194 @@
                       Height="16"
                       Margin="0,0,4,0"
                       VerticalAlignment="Center"
-                      Kind="ViewDashboardOutline" />
-                    <TextBlock VerticalAlignment="Center" FontSize="12" Text="{Binding ControlPanelToggleText}" />
+                      Kind="TuneVariant" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding ControlPanelToggleText}" />
                   </StackPanel>
                 </Button>
-              </Grid>
+                <StackPanel Orientation="Horizontal">
+                  <materialDesign:PackIcon
+                    Width="18"
+                    Height="18"
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center"
+                    Kind="LanConnect"
+                    Opacity="0.8" />
+                  <TextBox
+                    Width="170"
+                    Margin="0,0,10,0"
+                    VerticalAlignment="Center"
+                    materialDesign:HintAssist.Hint="IP address"
+                    AutomationProperties.Name="IP address"
+                    FontSize="13"
+                    Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}" />
+                  <Button
+                    Margin="0,0,6,0"
+                    Command="{Binding ConnectCommand}"
+                    Content="CONNECT"
+                    Style="{StaticResource CompactRaisedButton}" />
+                  <Button
+                    Margin="0,0,18,0"
+                    Command="{Binding DisconnectCommand}"
+                    Content="DISCONNECT"
+                    Style="{StaticResource CompactOutlinedButton}"
+                    ToolTip="Disconnect (unlock the controls first)" />
+                  <TextBlock
+                    Margin="0,0,6,0"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Opacity="0.8"
+                    Text="Sample rate" />
+                  <ComboBox
+                    Width="80"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Sample rate"
+                    DisplayMemberPath="DisplayName"
+                    FontSize="12"
+                    ItemsSource="{Binding SampleRates}"
+                    SelectedItem="{Binding SelectedSampleRate}"
+                    Style="{StaticResource MaterialDesignComboBox}"
+                    ToolTip="How often the supply is read and logged to the database" />
+                </StackPanel>
+              </DockPanel>
             </materialDesign:Card>
 
-            <!--  Main: Digital | Graphs | Control  -->
+            <!--  Main: Meters | Graphs | Controls  -->
             <Grid
               x:Name="MainContentGrid"
               Grid.Row="1"
-              Margin="8,0,8,8">
+              Margin="6,0,6,6">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition
                   x:Name="DigitalColumn"
-                  Width="*"
-                  MinWidth="150" />
+                  Width="5*"
+                  MinWidth="230" />
                 <ColumnDefinition Width="6" />
                 <ColumnDefinition
                   x:Name="GraphColumn"
-                  Width="*"
-                  MinWidth="200" />
+                  Width="6*"
+                  MinWidth="260" />
                 <ColumnDefinition x:Name="ControlSplitterColumn" Width="6" />
                 <ColumnDefinition
                   x:Name="ControlColumn"
-                  Width="300"
-                  MinWidth="180" />
+                  Width="310"
+                  MinWidth="260" />
               </Grid.ColumnDefinitions>
 
-              <!--  Digital values  -->
+              <!--  Meters  -->
               <materialDesign:Card
                 Grid.Column="0"
                 Margin="4"
                 Padding="12"
-                materialDesign:ElevationAssist.Elevation="Dp2">
+                materialDesign:ElevationAssist.Elevation="Dp1">
                 <Grid>
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="1.6*" />
                   </Grid.RowDefinitions>
-                  <TextBlock
+
+                  <ItemsControl
                     Grid.Row="0"
-                    Margin="0,0,0,8"
+                    Margin="0,0,0,6"
                     HorizontalAlignment="Center"
-                    FontSize="16"
-                    FontWeight="SemiBold"
-                    Foreground="{DynamicResource SecondaryHueMidBrush}"
-                    Text="{Binding Status.Time, TargetNullValue='---'}" />
-                  <Grid Grid.Row="1">
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="2*" />
-                      <RowDefinition Height="2*" />
-                      <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <Border
-                      Grid.Row="0"
-                      Margin="4"
-                      Padding="8"
-                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
-                      CornerRadius="8">
-                      <Grid>
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <TextBlock
-                          Grid.Row="0"
-                          HorizontalAlignment="Center"
-                          FontSize="13"
-                          FontWeight="SemiBold"
-                          Opacity="0.75"
-                          Text="VOLTAGE (V)" />
-                        <TextBlock
-                          Grid.Row="1"
-                          Margin="8,0,8,4"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Bottom"
-                          Panel.ZIndex="1"
-                          FontSize="12"
-                          FontWeight="SemiBold"
-                          Text="{Binding PowerSupplySettingStatus.SetVoltage, StringFormat='Set: {0:F2}V', TargetNullValue='---'}" />
-                        <TextBlock
-                          Grid.Row="1"
-                          Margin="0,0,8,4"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Bottom"
-                          Panel.ZIndex="1"
-                          FontSize="12"
-                          FontWeight="SemiBold"
-                          Text="{Binding PowerSupplySettingStatus.SetOvpLevel, StringFormat='OVP: {0:F2}V', TargetNullValue='---'}" />
-                        <Viewbox Grid.Row="1" Stretch="Uniform">
+                    AutomationProperties.Name="Status indicators"
+                    ItemsSource="{Binding StatusFlags}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="{x:Type vm:StatusFlag}">
+                        <Border
+                          x:Name="Chip"
+                          Margin="2"
+                          Padding="8,2"
+                          AutomationProperties.Name="{Binding Label}"
+                          BorderBrush="{DynamicResource MaterialDesign.Brush.Separator.Background}"
+                          CornerRadius="10"
+                          BorderThickness="1"
+                          ToolTip="{Binding Description}">
                           <TextBlock
-                            FontSize="120"
-                            FontWeight="Bold"
-                            Text="{Binding Status.Voltage, StringFormat='{}{0:F3}'}" />
-                        </Viewbox>
-                      </Grid>
-                    </Border>
+                            x:Name="ChipText"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Opacity="0.45"
+                            Text="{Binding Label}" />
+                        </Border>
+                        <DataTemplate.Triggers>
+                          <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                              <Condition Binding="{Binding IsActive}" Value="True" />
+                              <Condition Binding="{Binding Kind}" Value="Good" />
+                            </MultiDataTrigger.Conditions>
+                            <Setter TargetName="Chip" Property="Background" Value="{DynamicResource OkBrush}" />
+                            <Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource OkBrush}" />
+                            <Setter TargetName="ChipText" Property="Foreground" Value="White" />
+                            <Setter TargetName="ChipText" Property="Opacity" Value="1" />
+                          </MultiDataTrigger>
+                          <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                              <Condition Binding="{Binding IsActive}" Value="True" />
+                              <Condition Binding="{Binding Kind}" Value="Notice" />
+                            </MultiDataTrigger.Conditions>
+                            <Setter TargetName="Chip" Property="Background" Value="{DynamicResource WarnBrush}" />
+                            <Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource WarnBrush}" />
+                            <Setter TargetName="ChipText" Property="Foreground" Value="Black" />
+                            <Setter TargetName="ChipText" Property="Opacity" Value="1" />
+                          </MultiDataTrigger>
+                          <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                              <Condition Binding="{Binding IsActive}" Value="True" />
+                              <Condition Binding="{Binding Kind}" Value="Trip" />
+                            </MultiDataTrigger.Conditions>
+                            <Setter TargetName="Chip" Property="Background" Value="{DynamicResource ErrorBrush}" />
+                            <Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource ErrorBrush}" />
+                            <Setter TargetName="ChipText" Property="Foreground" Value="White" />
+                            <Setter TargetName="ChipText" Property="Opacity" Value="1" />
+                          </MultiDataTrigger>
+                        </DataTemplate.Triggers>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
 
-                    <Border
-                      Grid.Row="1"
-                      Margin="4"
-                      Padding="8"
-                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
-                      CornerRadius="8">
-                      <Grid>
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <TextBlock
-                          Grid.Row="0"
-                          HorizontalAlignment="Center"
-                          FontSize="13"
-                          FontWeight="SemiBold"
-                          Opacity="0.75"
-                          Text="CURRENT (A)" />
-                        <TextBlock
-                          Grid.Row="1"
-                          Margin="8,0,8,4"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Bottom"
-                          Panel.ZIndex="1"
-                          FontSize="12"
-                          FontWeight="SemiBold"
-                          Text="{Binding PowerSupplySettingStatus.SetCurrent, StringFormat='Set: {0:F2}A', TargetNullValue='---'}" />
-                        <TextBlock
-                          Grid.Row="1"
-                          Margin="0,0,8,4"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Bottom"
-                          Panel.ZIndex="1"
-                          FontSize="12"
-                          FontWeight="SemiBold"
-                          Text="{Binding PowerSupplySettingStatus.SetOcpLevel, StringFormat='OCP: {0:F2}A', TargetNullValue='---'}" />
-                        <Viewbox Grid.Row="1" Stretch="Uniform">
-                          <TextBlock
-                            FontSize="120"
-                            FontWeight="Bold"
-                            Text="{Binding Status.Current, StringFormat={}{0:F3}}" />
-                        </Viewbox>
-                      </Grid>
-                    </Border>
-
-                    <Border
-                      Grid.Row="2"
-                      Margin="4"
-                      Padding="8"
-                      Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputEnabledToBrushConverter}}"
-                      CornerRadius="8">
-                      <Grid>
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <TextBlock
-                          Grid.Row="0"
-                          HorizontalAlignment="Center"
-                          FontSize="13"
-                          FontWeight="SemiBold"
-                          Opacity="0.75"
-                          Text="POWER (W)" />
-                        <Viewbox Grid.Row="1" Stretch="Uniform">
-                          <TextBlock
-                            FontSize="120"
-                            FontWeight="Bold"
-                            Text="{Binding Status.Power, StringFormat={}{0:F2}}" />
-                        </Viewbox>
-                      </Grid>
-                    </Border>
-                  </Grid>
+                  <View:MeterTile
+                    Grid.Row="1"
+                    Margin="0,4"
+                    Accent="{DynamicResource VoltageBrush}"
+                    AutomationProperties.Name="Voltage"
+                    FooterLeft="{Binding PowerSupplySettingStatus.SetVoltage, StringFormat='Set {0:F2} V', FallbackValue='Set --- V'}"
+                    FooterRight="{Binding PowerSupplySettingStatus.SetOvpLevel, StringFormat='OVP {0:F2} V', FallbackValue='OVP --- V'}"
+                    Icon="SineWave"
+                    IsLive="{Binding Status.OutputEnabled}"
+                    Label="VOLTAGE"
+                    Unit="V"
+                    Value="{Binding Status.Voltage, StringFormat='{}{0:F3}'}" />
+                  <View:MeterTile
+                    Grid.Row="2"
+                    Margin="0,4"
+                    Accent="{DynamicResource CurrentBrush}"
+                    AutomationProperties.Name="Current"
+                    FooterLeft="{Binding PowerSupplySettingStatus.SetCurrent, StringFormat='Set {0:F2} A', FallbackValue='Set --- A'}"
+                    FooterRight="{Binding PowerSupplySettingStatus.SetOcpLevel, StringFormat='OCP {0:F2} A', FallbackValue='OCP --- A'}"
+                    Icon="CurrentDc"
+                    IsLive="{Binding Status.OutputEnabled}"
+                    Label="CURRENT"
+                    Unit="A"
+                    Value="{Binding Status.Current, StringFormat='{}{0:F3}'}" />
+                  <View:MeterTile
+                    Grid.Row="3"
+                    Margin="0,4,0,0"
+                    Accent="{DynamicResource PowerBrush}"
+                    AutomationProperties.Name="Power"
+                    FooterLeft="{Binding RegulationText}"
+                    FooterRight="{Binding LoadText}"
+                    Icon="LightningBoltOutline"
+                    IsLive="{Binding Status.OutputEnabled}"
+                    Label="POWER"
+                    Unit="W"
+                    Value="{Binding Status.Power, StringFormat='{}{0:F2}'}" />
                 </Grid>
               </materialDesign:Card>
 
@@ -405,7 +624,7 @@
                 Width="6"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Background="{DynamicResource MaterialDesignDivider}"
+                Background="Transparent"
                 ResizeBehavior="PreviousAndNext"
                 ShowsPreview="True" />
 
@@ -413,244 +632,74 @@
               <materialDesign:Card
                 Grid.Column="2"
                 Margin="4"
-                Padding="12"
-                materialDesign:ElevationAssist.Elevation="Dp2">
+                Padding="10"
+                materialDesign:ElevationAssist.Elevation="Dp1">
                 <Grid>
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="2*" />
-                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="*" />
                   </Grid.RowDefinitions>
 
-                  <DockPanel
-                    Grid.Row="0"
-                    Margin="0,0,0,8"
-                    LastChildFill="False">
+                  <DockPanel Grid.Row="0" Margin="2,0,0,6">
+                    <StackPanel
+                      VerticalAlignment="Center"
+                      DockPanel.Dock="Right"
+                      Orientation="Horizontal">
+                      <ToggleButton
+                        AutomationProperties.Name="Follow live"
+                        IsChecked="{Binding IsFollowingLive}"
+                        Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                        ToolTip="Keep the plots scrolling with the newest data. Zooming or panning a plot turns this off." />
+                      <TextBlock
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Text="Follow live" />
+                    </StackPanel>
                     <materialDesign:PackIcon
                       Width="20"
                       Height="20"
                       Margin="0,0,8,0"
                       VerticalAlignment="Center"
-                      Kind="ChartLine" />
+                      Kind="ChartLine"
+                      Opacity="0.8" />
                     <TextBlock
                       VerticalAlignment="Center"
-                      Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
-                      Text="Time Window: " />
+                      FontWeight="SemiBold"
+                      Text="Live" />
                     <ComboBox
-                      Width="150"
-                      Margin="16,0,0,0"
+                      Width="110"
+                      Margin="14,0,0,0"
+                      HorizontalAlignment="Left"
                       VerticalAlignment="Center"
+                      AutomationProperties.Name="Time window"
                       DisplayMemberPath="DisplayName"
                       ItemsSource="{Binding GraphTimeWindows}"
                       SelectedItem="{Binding SelectedGraphTimeWindow}"
-                      Style="{StaticResource MaterialDesignComboBox}" />
+                      Style="{StaticResource MaterialDesignComboBox}"
+                      ToolTip="Time window shown while following live data" />
                   </DockPanel>
 
-                  <Border
-                    Grid.Row="1"
-                    Margin="0,2"
-                    Background="{DynamicResource MaterialDesignCardBackground}"
-                    CornerRadius="4">
-                    <Grid>
-                      <scottPlot:WpfPlot x:Name="VoltagePlot" />
-                      <Border
-                        Margin="0,6,8,0"
-                        Padding="6,2"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        Panel.ZIndex="1"
-                        Background="#F2FFFFFF"
-                        BorderBrush="#33000000"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                        <StackPanel Orientation="Horizontal">
-                          <TextBlock
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            FontSize="11"
-                            Opacity="0.75"
-                            Text="Y:" />
-                          <ComboBox
-                            Width="86"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            ItemsSource="{Binding YAxisScaleModes}"
-                            SelectedItem="{Binding VoltageYAxis.Mode}"
-                            Style="{StaticResource MaterialDesignComboBox}" />
-                          <StackPanel
-                            Margin="6,0,0,0"
-                            Orientation="Horizontal"
-                            Visibility="{Binding VoltageYAxis.IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock
-                              Margin="0,0,4,0"
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Opacity="0.75"
-                              Text="Lower" />
-                            <xceed:DoubleUpDown
-                              Width="70"
-                              VerticalAlignment="Center"
-                              FontSize="12"
-                              FormatString="F2"
-                              Increment="0.1"
-                              ToolTip="Y-axis lower value"
-                              Value="{Binding VoltageYAxis.YMin, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock
-                              Margin="6,0,4,0"
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Opacity="0.75"
-                              Text="Upper" />
-                            <xceed:DoubleUpDown
-                              Width="70"
-                              VerticalAlignment="Center"
-                              FontSize="12"
-                              FormatString="F2"
-                              Increment="0.1"
-                              ToolTip="Y-axis upper value"
-                              Value="{Binding VoltageYAxis.YMax, UpdateSourceTrigger=PropertyChanged}" />
-                          </StackPanel>
-                        </StackPanel>
-                      </Border>
-                    </Grid>
-                  </Border>
-                  <Border
-                    Grid.Row="2"
-                    Margin="0,2"
-                    Background="{DynamicResource MaterialDesignCardBackground}"
-                    CornerRadius="4">
-                    <Grid>
-                      <scottPlot:WpfPlot x:Name="CurrentPlot" />
-                      <Border
-                        Margin="0,6,8,0"
-                        Padding="6,2"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        Panel.ZIndex="1"
-                        Background="#F2FFFFFF"
-                        BorderBrush="#33000000"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                        <StackPanel Orientation="Horizontal">
-                          <TextBlock
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            FontSize="11"
-                            Opacity="0.75"
-                            Text="Y:" />
-                          <ComboBox
-                            Width="86"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            ItemsSource="{Binding YAxisScaleModes}"
-                            SelectedItem="{Binding CurrentYAxis.Mode}"
-                            Style="{StaticResource MaterialDesignComboBox}" />
-                          <StackPanel
-                            Margin="6,0,0,0"
-                            Orientation="Horizontal"
-                            Visibility="{Binding CurrentYAxis.IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock
-                              Margin="0,0,4,0"
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Opacity="0.75"
-                              Text="Lower" />
-                            <xceed:DoubleUpDown
-                              Width="70"
-                              VerticalAlignment="Center"
-                              FontSize="12"
-                              FormatString="F2"
-                              Increment="0.1"
-                              ToolTip="Y-axis lower value"
-                              Value="{Binding CurrentYAxis.YMin, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock
-                              Margin="6,0,4,0"
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Opacity="0.75"
-                              Text="Upper" />
-                            <xceed:DoubleUpDown
-                              Width="70"
-                              VerticalAlignment="Center"
-                              FontSize="12"
-                              FormatString="F2"
-                              Increment="0.1"
-                              ToolTip="Y-axis upper value"
-                              Value="{Binding CurrentYAxis.YMax, UpdateSourceTrigger=PropertyChanged}" />
-                          </StackPanel>
-                        </StackPanel>
-                      </Border>
-                    </Grid>
-                  </Border>
-                  <Border
-                    Grid.Row="3"
-                    Margin="0,2"
-                    Background="{DynamicResource MaterialDesignCardBackground}"
-                    CornerRadius="4">
-                    <Grid>
-                      <scottPlot:WpfPlot x:Name="PowerPlot" />
-                      <Border
-                        Margin="0,6,8,0"
-                        Padding="6,2"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        Panel.ZIndex="1"
-                        Background="#F2FFFFFF"
-                        BorderBrush="#33000000"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                        <StackPanel Orientation="Horizontal">
-                          <TextBlock
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center"
-                            FontSize="11"
-                            Opacity="0.75"
-                            Text="Y:" />
-                          <ComboBox
-                            Width="86"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            ItemsSource="{Binding YAxisScaleModes}"
-                            SelectedItem="{Binding PowerYAxis.Mode}"
-                            Style="{StaticResource MaterialDesignComboBox}" />
-                          <StackPanel
-                            Margin="6,0,0,0"
-                            Orientation="Horizontal"
-                            Visibility="{Binding PowerYAxis.IsManual, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock
-                              Margin="0,0,4,0"
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Opacity="0.75"
-                              Text="Lower" />
-                            <xceed:DoubleUpDown
-                              Width="70"
-                              VerticalAlignment="Center"
-                              FontSize="12"
-                              FormatString="F2"
-                              Increment="1"
-                              ToolTip="Y-axis lower value"
-                              Value="{Binding PowerYAxis.YMin, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock
-                              Margin="6,0,4,0"
-                              VerticalAlignment="Center"
-                              FontSize="11"
-                              Opacity="0.75"
-                              Text="Upper" />
-                            <xceed:DoubleUpDown
-                              Width="70"
-                              VerticalAlignment="Center"
-                              FontSize="12"
-                              FormatString="F2"
-                              Increment="1"
-                              ToolTip="Y-axis upper value"
-                              Value="{Binding PowerYAxis.YMax, UpdateSourceTrigger=PropertyChanged}" />
-                          </StackPanel>
-                        </StackPanel>
-                      </Border>
-                    </Grid>
-                  </Border>
+                  <Grid Grid.Row="1" Margin="0,2">
+                    <scottPlot:WpfPlot x:Name="VoltagePlot" />
+                    <Border Style="{StaticResource PlotOverlay}">
+                      <ContentControl Content="{Binding VoltageYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
+                    </Border>
+                  </Grid>
+                  <Grid Grid.Row="2" Margin="0,2">
+                    <scottPlot:WpfPlot x:Name="CurrentPlot" />
+                    <Border Style="{StaticResource PlotOverlay}">
+                      <ContentControl Content="{Binding CurrentYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
+                    </Border>
+                  </Grid>
+                  <Grid Grid.Row="3" Margin="0,2">
+                    <scottPlot:WpfPlot x:Name="PowerPlot" />
+                    <Border Style="{StaticResource PlotOverlay}">
+                      <ContentControl Content="{Binding PowerYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
+                    </Border>
+                  </Grid>
                 </Grid>
               </materialDesign:Card>
 
@@ -660,7 +709,7 @@
                 Width="6"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Background="{DynamicResource MaterialDesignDivider}"
+                Background="Transparent"
                 ResizeBehavior="PreviousAndNext"
                 ShowsPreview="True" />
 
@@ -669,329 +718,465 @@
                 x:Name="ControlPanelBorder"
                 Grid.Column="4"
                 Margin="4"
-                Padding="12"
-                materialDesign:ElevationAssist.Elevation="Dp2">
+                Padding="14,10"
+                materialDesign:ElevationAssist.Elevation="Dp1">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                   <StackPanel>
-                    <TextBlock
-                      Margin="0,0,0,12"
-                      HorizontalAlignment="Center"
-                      Style="{StaticResource MaterialDesignHeadline6TextBlock}"
-                      Text="CONTROL PANEL" />
+                    <!--  Lock  -->
+                    <DockPanel>
+                      <ToggleButton
+                        AutomationProperties.Name="Enable Configuration"
+                        DockPanel.Dock="Right"
+                        IsChecked="{Binding IsInConfigMode}"
+                        Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                        ToolTip="Unlock the controls to change the supply's settings" />
+                      <materialDesign:PackIcon
+                        Width="20"
+                        Height="20"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center">
+                        <materialDesign:PackIcon.Style>
+                          <Style TargetType="materialDesign:PackIcon">
+                            <Setter Property="Kind" Value="LockOutline" />
+                            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsInConfigMode}" Value="True">
+                                <Setter Property="Kind" Value="LockOpenVariantOutline" />
+                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </materialDesign:PackIcon.Style>
+                      </materialDesign:PackIcon>
+                      <StackPanel Margin="0,0,10,0" VerticalAlignment="Center">
+                        <TextBlock FontSize="14" FontWeight="SemiBold" Text="Controls" />
+                        <TextBlock
+                          FontSize="11"
+                          Opacity="0.7"
+                          TextWrapping="Wrap">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Setter Property="Text" Value="Locked - switch on to make changes" />
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsInConfigMode}" Value="True">
+                                  <Setter Property="Text" Value="Unlocked - commands go to the supply" />
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                      </StackPanel>
+                    </DockPanel>
 
-                    <materialDesign:Card
-                      Margin="0,0,0,10"
-                      Padding="10"
-                      UniformCornerRadius="6">
+                    <!--  Output  -->
+                    <Button
+                      Height="46"
+                      Margin="0,14,0,0"
+                      HorizontalAlignment="Stretch"
+                      materialDesign:ButtonAssist.CornerRadius="8"
+                      AutomationProperties.Name="Toggle output"
+                      Command="{Binding ToggleOutputCommand}"
+                      FontSize="15"
+                      FontWeight="Bold"
+                      Foreground="White">
+                      <Button.Style>
+                        <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+                          <Setter Property="Background" Value="#2E7D32" />
+                          <Setter Property="BorderBrush" Value="#2E7D32" />
+                          <Setter Property="Content" Value="TURN OUTPUT ON" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding Status.OutputEnabled}" Value="True">
+                              <Setter Property="Background" Value="#C62828" />
+                              <Setter Property="BorderBrush" Value="#C62828" />
+                              <Setter Property="Content" Value="TURN OUTPUT OFF" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
+
+                    <!--  Set-points  -->
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="SET-POINTS" />
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
+
+                      <TextBlock
+                        Grid.Row="0"
+                        Width="62"
+                        VerticalAlignment="Center"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource VoltageBrush}"
+                        Text="Voltage" />
+                      <xceed:DoubleUpDown
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Voltage set-point"
+                        Maximum="{Binding MaxVoltageToSet}"
+                        Minimum="{Binding MinVoltageToSet}"
+                        Style="{StaticResource SetPointInput}"
+                        Value="{Binding VoltageToSet}" />
+                      <Button
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Margin="8,0,0,0"
+                        AutomationProperties.Name="Set voltage"
+                        Command="{Binding SetVoltageCommand}">
+                        <Button.Style>
+                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsVoltageValid}" Value="False">
+                                <Setter Property="IsEnabled" Value="False" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Button.Style>
+                      </Button>
+                      <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Margin="0,2,0,10"
+                        FontSize="11"
+                        Opacity="0.6">
+                        <Run Text="{Binding MinVoltageToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                        <Run Text="–" />
+                        <Run Text="{Binding MaxVoltageToSet, Mode=OneWay, StringFormat='{}{0:F2} V'}" />
+                      </TextBlock>
+
+                      <TextBlock
+                        Grid.Row="2"
+                        VerticalAlignment="Center"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource CurrentBrush}"
+                        Text="Current" />
+                      <xceed:DoubleUpDown
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        AutomationProperties.Name="Current set-point"
+                        Maximum="{Binding MaxCurrentToSet}"
+                        Minimum="{Binding MinCurrentToSet}"
+                        Style="{StaticResource SetPointInput}"
+                        Value="{Binding CurrentToSet}" />
+                      <Button
+                        Grid.Row="2"
+                        Grid.Column="2"
+                        Margin="8,0,0,0"
+                        AutomationProperties.Name="Set current"
+                        Command="{Binding SetCurrentCommand}">
+                        <Button.Style>
+                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsCurrentValid}" Value="False">
+                                <Setter Property="IsEnabled" Value="False" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Button.Style>
+                      </Button>
+                      <TextBlock
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        Margin="0,2,0,0"
+                        FontSize="11"
+                        Opacity="0.6">
+                        <Run Text="{Binding MinCurrentToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                        <Run Text="–" />
+                        <Run Text="{Binding MaxCurrentToSet, Mode=OneWay, StringFormat='{}{0:F2} A'}" />
+                      </TextBlock>
+                    </Grid>
+
+                    <!--  Protection  -->
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="PROTECTION" />
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
+
+                      <TextBlock
+                        Grid.Row="0"
+                        Width="62"
+                        VerticalAlignment="Center"
+                        FontWeight="SemiBold"
+                        Text="OVP" />
+                      <xceed:DoubleUpDown
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        AutomationProperties.Name="OVP level"
+                        Maximum="{Binding MaxOvpToSet}"
+                        Minimum="{Binding MinOvpToSet}"
+                        Style="{StaticResource SetPointInput}"
+                        Value="{Binding OvpToSet}" />
+                      <Button
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Margin="8,0,0,0"
+                        AutomationProperties.Name="Set OVP"
+                        Command="{Binding SetOvpCommand}">
+                        <Button.Style>
+                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsOvpValid}" Value="False">
+                                <Setter Property="IsEnabled" Value="False" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Button.Style>
+                      </Button>
+                      <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Margin="0,2,0,10"
+                        FontSize="11"
+                        Opacity="0.6">
+                        <Run Text="{Binding MinOvpToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                        <Run Text="–" />
+                        <Run Text="{Binding MaxOvpToSet, Mode=OneWay, StringFormat='{}{0:F2} V'}" />
+                      </TextBlock>
+
+                      <TextBlock
+                        Grid.Row="2"
+                        VerticalAlignment="Center"
+                        FontWeight="SemiBold"
+                        Text="OCP" />
+                      <xceed:DoubleUpDown
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        AutomationProperties.Name="OCP level"
+                        Maximum="{Binding MaxOcpToSet}"
+                        Minimum="{Binding MinOcpToSet}"
+                        Style="{StaticResource SetPointInput}"
+                        Value="{Binding OcpToSet}" />
+                      <Button
+                        Grid.Row="2"
+                        Grid.Column="2"
+                        Margin="8,0,0,0"
+                        AutomationProperties.Name="Set OCP"
+                        Command="{Binding SetOcpCommand}">
+                        <Button.Style>
+                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsOcpValid}" Value="False">
+                                <Setter Property="IsEnabled" Value="False" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Button.Style>
+                      </Button>
+                      <TextBlock
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        Margin="0,2,0,0"
+                        FontSize="11"
+                        Opacity="0.6">
+                        <Run Text="{Binding MinOcpToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
+                        <Run Text="–" />
+                        <Run Text="{Binding MaxOcpToSet, Mode=OneWay, StringFormat='{}{0:F2} A'}" />
+                      </TextBlock>
+                    </Grid>
+
+                    <UniformGrid Margin="0,12,0,0" Columns="2">
+                      <Button
+                        Margin="0,0,4,0"
+                        Command="{Binding SendMiscCommand}"
+                        CommandParameter="TRIPRST"
+                        Content="TRIP RESET"
+                        Style="{StaticResource CompactOutlinedButton}"
+                        ToolTip="Clear a latched OVP / OCP / sense / fault trip" />
+                      <Button
+                        Margin="4,0,0,0"
+                        Command="{Binding SendMiscCommand}"
+                        CommandParameter="LOCAL"
+                        Content="LOCAL"
+                        Style="{StaticResource CompactOutlinedButton}"
+                        ToolTip="Return the supply to front-panel control" />
+                    </UniformGrid>
+
+                    <!--  Soft limits and storage (was the Settings tab)  -->
+                    <Expander
+                      Margin="-14,16,-14,0"
+                      Padding="14,0,14,8"
+                      Background="Transparent"
+                      materialDesign:ExpanderAssist.HorizontalHeaderPadding="14,8"
+                      AutomationProperties.Name="Soft limits and storage">
+                      <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <materialDesign:PackIcon
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Kind="ShieldEditOutline"
+                            Opacity="0.8" />
+                          <TextBlock
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            Text="Soft limits &amp; storage" />
+                        </StackPanel>
+                      </Expander.Header>
                       <StackPanel>
                         <TextBlock
                           Margin="0,0,0,8"
-                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                          Text="Voltage Control" />
+                          FontSize="11"
+                          Opacity="0.7"
+                          Text="The voltage and current set-points can only be sent inside these limits."
+                          TextWrapping="Wrap" />
                         <Grid>
                           <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                          </Grid.ColumnDefinitions>
-                          <xceed:DoubleUpDown
-                            FontSize="16"
-                            Increment="0.1"
-                            Maximum="{Binding MaxVoltageToSet}"
-                            Minimum="{Binding MinVoltageToSet}"
-                            TextAlignment="Right"
-                            Value="{Binding VoltageToSet}" />
-                          <TextBlock
-                            Grid.Column="1"
-                            Margin="8,0"
-                            VerticalAlignment="Center"
-                            Text="V" />
-                          <Button
-                            Grid.Column="2"
-                            Command="{Binding SetVoltageCommand}"
-                            Content="SET">
-                            <Button.Style>
-                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
-                                <Style.Triggers>
-                                  <DataTrigger Binding="{Binding IsVoltageValid}" Value="False">
-                                    <Setter Property="IsEnabled" Value="False" />
-                                  </DataTrigger>
-                                </Style.Triggers>
-                              </Style>
-                            </Button.Style>
-                          </Button>
-                        </Grid>
-                      </StackPanel>
-                    </materialDesign:Card>
-
-                    <materialDesign:Card
-                      Margin="0,0,0,10"
-                      Padding="10"
-                      UniformCornerRadius="6">
-                      <StackPanel>
-                        <TextBlock
-                          Margin="0,0,0,8"
-                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                          Text="Current Control" />
-                        <Grid>
-                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="12" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
                           </Grid.ColumnDefinitions>
-                          <xceed:DoubleUpDown
-                            FontSize="16"
-                            Increment="0.1"
-                            Maximum="{Binding MaxCurrentToSet}"
-                            Minimum="{Binding MinCurrentToSet}"
-                            TextAlignment="Right"
-                            Value="{Binding CurrentToSet}" />
+                          <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                          </Grid.RowDefinitions>
+                          <TextBlock Grid.Column="1" FontSize="11" Opacity="0.7" Text="Min" />
+                          <TextBlock Grid.Column="3" FontSize="11" Opacity="0.7" Text="Max" />
+
                           <TextBlock
-                            Grid.Column="1"
-                            Margin="8,0"
+                            Grid.Row="1"
+                            Margin="0,0,10,0"
                             VerticalAlignment="Center"
-                            Text="A" />
-                          <Button
-                            Grid.Column="2"
-                            Command="{Binding SetCurrentCommand}"
-                            Content="SET">
-                            <Button.Style>
-                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
-                                <Style.Triggers>
-                                  <DataTrigger Binding="{Binding IsCurrentValid}" Value="False">
-                                    <Setter Property="IsEnabled" Value="False" />
-                                  </DataTrigger>
-                                </Style.Triggers>
-                              </Style>
-                            </Button.Style>
-                          </Button>
-                        </Grid>
-                      </StackPanel>
-                    </materialDesign:Card>
-
-                    <materialDesign:Card
-                      Margin="0,0,0,10"
-                      Padding="10"
-                      UniformCornerRadius="6">
-                      <StackPanel>
-                        <TextBlock
-                          Margin="0,0,0,8"
-                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                          Text="Over Voltage Protection" />
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                          </Grid.ColumnDefinitions>
+                            Foreground="{DynamicResource VoltageBrush}"
+                            Text="Voltage (V)" />
                           <xceed:DoubleUpDown
-                            FontSize="16"
-                            Increment="0.1"
-                            Maximum="{Binding MaxOvpToSet}"
-                            Minimum="{Binding MinOvpToSet}"
-                            TextAlignment="Right"
-                            Value="{Binding OvpToSet}" />
-                          <TextBlock
+                            Grid.Row="1"
                             Grid.Column="1"
-                            Margin="8,0"
-                            VerticalAlignment="Center"
-                            Text="V" />
-                          <Button
-                            Grid.Column="2"
-                            Command="{Binding SetOvpCommand}"
-                            Content="SET">
-                            <Button.Style>
-                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
-                                <Style.Triggers>
-                                  <DataTrigger Binding="{Binding IsOvpValid}" Value="False">
-                                    <Setter Property="IsEnabled" Value="False" />
-                                  </DataTrigger>
-                                </Style.Triggers>
-                              </Style>
-                            </Button.Style>
-                          </Button>
-                        </Grid>
-                      </StackPanel>
-                    </materialDesign:Card>
-
-                    <materialDesign:Card
-                      Margin="0,0,0,10"
-                      Padding="10"
-                      UniformCornerRadius="6">
-                      <StackPanel>
-                        <TextBlock
-                          Margin="0,0,0,8"
-                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                          Text="Over Current Protection" />
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                          </Grid.ColumnDefinitions>
+                            Height="28"
+                            Margin="0,2"
+                            AutomationProperties.Name="Minimum voltage"
+                            FormatString="F2"
+                            Maximum="{Binding InstrumentMaxVoltage}"
+                            Minimum="0"
+                            Value="{Binding LimitMinVoltage}" />
                           <xceed:DoubleUpDown
-                            FontSize="16"
-                            Increment="0.1"
-                            Maximum="{Binding MaxOcpToSet}"
-                            Minimum="{Binding MinOcpToSet}"
-                            TextAlignment="Right"
-                            Value="{Binding OcpToSet}" />
+                            Grid.Row="1"
+                            Grid.Column="3"
+                            Height="28"
+                            Margin="0,2"
+                            AutomationProperties.Name="Maximum voltage"
+                            FormatString="F2"
+                            Maximum="{Binding InstrumentMaxVoltage}"
+                            Minimum="0"
+                            Value="{Binding LimitMaxVoltage}" />
+
                           <TextBlock
-                            Grid.Column="1"
-                            Margin="8,0"
+                            Grid.Row="2"
+                            Margin="0,0,10,0"
                             VerticalAlignment="Center"
-                            Text="A" />
-                          <Button
-                            Grid.Column="2"
-                            Command="{Binding SetOcpCommand}"
-                            Content="SET">
-                            <Button.Style>
-                              <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
-                                <Style.Triggers>
-                                  <DataTrigger Binding="{Binding IsOcpValid}" Value="False">
-                                    <Setter Property="IsEnabled" Value="False" />
-                                  </DataTrigger>
-                                </Style.Triggers>
-                              </Style>
-                            </Button.Style>
-                          </Button>
+                            Foreground="{DynamicResource CurrentBrush}"
+                            Text="Current (A)" />
+                          <xceed:DoubleUpDown
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Height="28"
+                            Margin="0,2"
+                            AutomationProperties.Name="Minimum current"
+                            FormatString="F2"
+                            Maximum="{Binding InstrumentMaxCurrent}"
+                            Minimum="0"
+                            Value="{Binding LimitMinCurrent}" />
+                          <xceed:DoubleUpDown
+                            Grid.Row="2"
+                            Grid.Column="3"
+                            Height="28"
+                            Margin="0,2"
+                            AutomationProperties.Name="Maximum current"
+                            FormatString="F2"
+                            Maximum="{Binding InstrumentMaxCurrent}"
+                            Minimum="0"
+                            Value="{Binding LimitMaxCurrent}" />
                         </Grid>
-                      </StackPanel>
-                    </materialDesign:Card>
 
-                    <materialDesign:Card
-                      Margin="0,0,0,10"
-                      Padding="10"
-                      UniformCornerRadius="6">
-                      <StackPanel>
-                        <TextBlock
-                          Margin="0,0,0,8"
-                          Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                          Text="Misc Control" />
-                        <UniformGrid Columns="2">
+                        <DockPanel Margin="0,12,0,0">
+                          <xceed:IntegerUpDown
+                            Width="80"
+                            Height="28"
+                            AutomationProperties.Name="Days to keep"
+                            DockPanel.Dock="Right"
+                            Maximum="3650"
+                            Minimum="0"
+                            Value="{Binding LimitRetentionDays}" />
+                          <StackPanel Margin="0,0,8,0" VerticalAlignment="Center">
+                            <TextBlock Text="Keep logged data (days)" />
+                            <TextBlock
+                              FontSize="11"
+                              Opacity="0.7"
+                              Text="0 keeps everything. Older data is deleted permanently."
+                              TextWrapping="Wrap" />
+                          </StackPanel>
+                        </DockPanel>
+
+                        <DockPanel Margin="0,12,0,0">
                           <Button
-                            Margin="0,0,4,0"
-                            Command="{Binding SendMiscCommand}"
-                            CommandParameter="TRIPRST"
-                            Content="TRIP Reset"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" />
+                            Command="{Binding SaveLimitsCommand}"
+                            Content="SAVE"
+                            DockPanel.Dock="Right"
+                            Style="{StaticResource CompactRaisedButton}" />
                           <Button
-                            Margin="4,0,0,0"
-                            Command="{Binding SendMiscCommand}"
-                            CommandParameter="LOCAL"
-                            Content="LOCAL"
-                            Style="{StaticResource MaterialDesignOutlinedButton}" />
-                        </UniformGrid>
+                            Margin="0,0,8,0"
+                            Command="{Binding RevertLimitsCommand}"
+                            Content="REVERT"
+                            DockPanel.Dock="Right"
+                            Style="{StaticResource CompactOutlinedButton}"
+                            ToolTip="Discard unsaved changes" />
+                          <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Foreground="{DynamicResource OkBrush}"
+                            Text="{Binding LimitsStatusText}" />
+                        </DockPanel>
                       </StackPanel>
-                    </materialDesign:Card>
-
-                    <materialDesign:Card
-                      Margin="0,0,0,12"
-                      Padding="12"
-                      Background="{DynamicResource SecondaryHueLightBrush}"
-                      UniformCornerRadius="6">
-                      <Grid>
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <Button
-                          Grid.Column="0"
-                          MinWidth="110"
-                          Background="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonBackgroundConverter}}"
-                          Command="{Binding ToggleOutputCommand}"
-                          Content="{Binding Status.OutputEnabled, Converter={StaticResource OutputButtonTextConverter}}"
-                          FontWeight="Bold"
-                          Foreground="White"
-                          Style="{StaticResource MaterialDesignRaisedButton}" />
-                      </Grid>
-                    </materialDesign:Card>
-
-                    <CheckBox
-                      Content="Enable Configuration"
-                      IsChecked="{Binding IsInConfigMode}"
-                      Style="{StaticResource MaterialDesignCheckBox}" />
+                    </Expander>
                   </StackPanel>
                 </ScrollViewer>
               </materialDesign:Card>
             </Grid>
-
-            <!--  Event status bar (bottom)  -->
-            <materialDesign:ColorZone
-              Grid.Row="2"
-              Padding="16,10"
-              Mode="Standard">
-              <DockPanel>
-                <TextBlock
-                  Margin="0,0,16,0"
-                  VerticalAlignment="Center"
-                  FontWeight="SemiBold"
-                  Text="Event Status" />
-                <UniformGrid Columns="6">
-                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                    <Ellipse
-                      Width="12"
-                      Height="12"
-                      Margin="0,0,6,0"
-                      Fill="{Binding EventStatus.ConstantVoltageMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                    <TextBlock VerticalAlignment="Center" Text="CV" />
-                  </StackPanel>
-                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                    <Ellipse
-                      Width="12"
-                      Height="12"
-                      Margin="0,0,6,0"
-                      Fill="{Binding EventStatus.ConstantCurrentMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                    <TextBlock VerticalAlignment="Center" Text="CC" />
-                  </StackPanel>
-                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                    <Ellipse
-                      Width="12"
-                      Height="12"
-                      Margin="0,0,6,0"
-                      Fill="{Binding EventStatus.UnregulatedMode, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                    <TextBlock VerticalAlignment="Center" Text="Unreg" />
-                  </StackPanel>
-                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                    <Ellipse
-                      Width="12"
-                      Height="12"
-                      Margin="0,0,6,0"
-                      Fill="{Binding EventStatus.OverVoltageTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                    <TextBlock VerticalAlignment="Center" Text="OVP" />
-                  </StackPanel>
-                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                    <Ellipse
-                      Width="12"
-                      Height="12"
-                      Margin="0,0,6,0"
-                      Fill="{Binding EventStatus.OverCurrentTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                    <TextBlock VerticalAlignment="Center" Text="OCP" />
-                  </StackPanel>
-                  <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                    <Ellipse
-                      Width="12"
-                      Height="12"
-                      Margin="0,0,6,0"
-                      Fill="{Binding EventStatus.FaultTrip, Converter={StaticResource BoolToProtectionBrushConverter}}" />
-                    <TextBlock VerticalAlignment="Center" Text="Fault" />
-                  </StackPanel>
-                </UniformGrid>
-              </DockPanel>
-            </materialDesign:ColorZone>
           </Grid>
         </TabItem>
 
-        <TabItem Header="Settings">
-          <View:Settings />
-        </TabItem>
-        <TabItem Header="History">
+        <TabItem AutomationProperties.Name="History">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="ChartTimelineVariant" />
+              <TextBlock VerticalAlignment="Center" Text="History" />
+            </StackPanel>
+          </TabItem.Header>
           <View:HistoryView />
         </TabItem>
-        <TabItem Header="Data Logs">
+        <TabItem AutomationProperties.Name="Data Logs">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="DatabaseSearchOutline" />
+              <TextBlock VerticalAlignment="Center" Text="Data Logs" />
+            </StackPanel>
+          </TabItem.Header>
           <View:DataRetrievalView />
         </TabItem>
-        <TabItem Header="App Logs">
+        <TabItem AutomationProperties.Name="App Logs">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="TextBoxOutline" />
+              <TextBlock VerticalAlignment="Center" Text="App Logs" />
+            </StackPanel>
+          </TabItem.Header>
           <View:AppLogsView />
         </TabItem>
       </TabControl>

@@ -24,6 +24,8 @@ namespace QPX1200SPController
                 $"Application started (v{Assembly.GetExecutingAssembly().GetName().Version}).",
                 nameof(App), nameof(OnStartup));
 
+            ThemeService.Instance.Apply(Models.Settings.Current.DarkTheme);
+
             // The ViewModelLocator is already set up in App.xaml resources
             // and MainWindow will use it through DataContext binding
             MainWindow mainWindow = new MainWindow();

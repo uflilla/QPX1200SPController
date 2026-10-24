@@ -35,7 +35,7 @@ namespace QPX1200SPController.Views
                 HeaderText.Text = "Exit the application?";
                 MessageText.Text = "The output is OFF. The connection to the power supply will be closed.";
                 HeaderIcon.Kind = MaterialDesignThemes.Wpf.PackIconKind.HelpCircleOutline;
-                HeaderIcon.Foreground = (System.Windows.Media.Brush)FindResource("PrimaryHueMidBrush");
+                HeaderIcon.SetResourceReference(ForegroundProperty, "MaterialDesign.Brush.Primary");
                 TurnOffButton.Visibility = Visibility.Collapsed;
                 ExitButton.Content = "EXIT";
             }

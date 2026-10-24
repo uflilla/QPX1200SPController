@@ -43,8 +43,20 @@ namespace QPX1200SPController.Views
             _viewModel.MarkersChanged += _presenter.RebuildMarkers;
             _viewModel.CenterOnRequested += _presenter.CenterOn;
             _viewModel.ExportPngRequested += OnExportPng;
+            Services.ThemeService.Instance.ThemeChanged += _presenter.ApplyTheme;
 
-            // First visit: show the last hour.
+            // The tab content is loaded at start-up; load the last hour when the tab is first shown,
+            // so "the last hour" means the hour before the user looked.
+            IsVisibleChanged += OnFirstShown;
+            if (IsVisible)
+                OnFirstShown(this, default(DependencyPropertyChangedEventArgs));
+        }
+
+        private void OnFirstShown(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (!IsVisible)
+                return;
+            IsVisibleChanged -= OnFirstShown;
             if (_viewModel.PresetCommand.CanExecute("1 hour"))
                 _viewModel.PresetCommand.Execute("1 hour");
         }

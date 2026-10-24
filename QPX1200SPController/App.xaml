@@ -6,12 +6,14 @@
   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
   xmlns:d1p1="http://schemas.openxmlformats.org/markup-compatibility/2006"
   xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+  xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
   d1p1:Ignorable="d">
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
+        <!--  The base theme (dark by default) and the app brushes are applied by ThemeService at startup.  -->
         <materialDesign:BundledTheme
-          BaseTheme="Light"
+          BaseTheme="Dark"
           PrimaryColor="Teal"
           SecondaryColor="Amber" />
         <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml" />
@@ -19,16 +21,20 @@
 
       <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
       <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
-      <converters:BoolToOnOffConverter x:Key="BoolToOnOffConverter" />
-      <converters:OutputEnabledToBrushConverter x:Key="OutputEnabledToBrushConverter" />
-      <converters:OutputEnabledToForegroundConverter x:Key="OutputEnabledToForegroundConverter" />
-      <converters:OutputButtonTextConverter x:Key="OutputButtonTextConverter" />
-      <converters:OutputButtonBackgroundConverter x:Key="OutputButtonBackgroundConverter" />
-      <converters:BoolToProtectionBrushConverter x:Key="BoolToProtectionBrushConverter" />
       <vm:ViewModelLocator
         xmlns:vm="clr-namespace:QPX1200SPController.ViewModels"
         x:Key="Locator"
         d:IsDataSource="True" />
+
+      <!--  Xceed inputs have no MaterialDesign style: give them the theme's colours so they work in dark mode.  -->
+      <Style x:Key="XceedInputStyle" TargetType="Control">
+        <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Card.Background}" />
+        <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Foreground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.TextBox.Border}" />
+      </Style>
+      <Style BasedOn="{StaticResource XceedInputStyle}" TargetType="xctk:DoubleUpDown" />
+      <Style BasedOn="{StaticResource XceedInputStyle}" TargetType="xctk:IntegerUpDown" />
+      <Style BasedOn="{StaticResource XceedInputStyle}" TargetType="xctk:DateTimePicker" />
     </ResourceDictionary>
   </Application.Resources>
 </Application>

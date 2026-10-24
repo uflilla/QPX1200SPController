@@ -1,96 +1,30 @@
-/*
-  In App.xaml:
-  <Application.Resources>
-      <vm:ViewModelLocator xmlns:vm="clr-namespace:QPX1200SPController"
-                           x:Key="Locator" />
-  </Application.Resources>
-  
-  In the View:
-  DataContext="{Binding Source={StaticResource Locator}, Path=ViewModelName}"
-
-  You can also use Blend to do all this with the tool's support.
-  See http://www.galasoft.ch/mvvm
-*/
-
-using CommonServiceLocator;
-using GalaSoft.MvvmLight;
-using GalaSoft.MvvmLight.Ioc;
+using System;
 using QPX1200SPController.Services;
 
 namespace QPX1200SPController.ViewModels
 {
     /// <summary>
-    /// This class contains static references to all the view models in the
-    /// application and provides an entry point for the bindings.
+    /// Creates the services and view models once (on first use) and gives the views access to them:
+    /// DataContext="{Binding Main, Source={StaticResource Locator}}".
     /// </summary>
     public class ViewModelLocator
     {
-        /// <summary>
-        /// Initializes a new instance of the ViewModelLocator class.
-        /// </summary>
-        public ViewModelLocator()
+        private static readonly Lazy<PowerSupplyService> _powerSupply = new Lazy<PowerSupplyService>(CreatePowerSupplyService);
+        private static readonly Lazy<DatabaseService> _database = new Lazy<DatabaseService>(() => new DatabaseService());
+        private static readonly Lazy<MainViewModel> _main = new Lazy<MainViewModel>(() => new MainViewModel(_powerSupply.Value, _database.Value));
+        private static readonly Lazy<DataRetrievalViewModel> _dataRetrieval = new Lazy<DataRetrievalViewModel>(() => new DataRetrievalViewModel(_database.Value));
+        private static readonly Lazy<HistoryViewModel> _history = new Lazy<HistoryViewModel>(() => new HistoryViewModel(_database.Value));
+
+        public MainViewModel Main => _main.Value;
+        public HistoryViewModel History => _history.Value;
+        public DataRetrievalViewModel DataRetrieval => _dataRetrieval.Value;
+
+        private static PowerSupplyService CreatePowerSupplyService()
         {
-            ServiceLocator.SetLocatorProvider(() => SimpleIoc.Default);
-
-            // Register services
-            SimpleIoc.Default.Register<PowerSupplyService>();
-            SimpleIoc.Default.Register<DatabaseService>();
-
+            var service = new PowerSupplyService();
             // Every configuration command, connection event and communication error goes to the CommandLog table.
-            SimpleIoc.Default.GetInstance<PowerSupplyService>().ActivityRecorded +=
-                SimpleIoc.Default.GetInstance<DatabaseService>().EnqueueActivity;
-
-            // Register view models
-            SimpleIoc.Default.Register<MainViewModel>();
-            SimpleIoc.Default.Register<SettingsViewModel>();
-            //SimpleIoc.Default.Register<LogViewModel>();
-            SimpleIoc.Default.Register<DataRetrievalViewModel>();
-            SimpleIoc.Default.Register<HistoryViewModel>();
-        }
-
-        public HistoryViewModel History
-        {
-            get
-            {
-                return ServiceLocator.Current.GetInstance<HistoryViewModel>();
-            }
-        }
-
-        public MainViewModel Main
-        {
-            get
-            {
-                return ServiceLocator.Current.GetInstance<MainViewModel>();
-            }
-        }
-
-        public SettingsViewModel Settings
-        {
-            get
-            {
-                return ServiceLocator.Current.GetInstance<SettingsViewModel>();
-            }
-        }
-
-        //public LogViewModel Log
-        //{
-        //    get
-        //    {
-        //        return ServiceLocator.Current.GetInstance<LogViewModel>();
-        //    }
-        //}
-
-        public DataRetrievalViewModel DataRetrieval
-        {
-            get
-            {
-                return ServiceLocator.Current.GetInstance<DataRetrievalViewModel>();
-            }
-        }
-        
-        public static void Cleanup()
-        {
-            // TODO Clear the ViewModels
+            service.ActivityRecorded += _database.Value.EnqueueActivity;
+            return service;
         }
     }
 }

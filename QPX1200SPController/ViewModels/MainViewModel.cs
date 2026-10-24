@@ -23,6 +23,7 @@ namespace QPX1200SPController.ViewModels
         private readonly DatabaseService _databaseService;
         private readonly Settings _settings = Settings.Current;
         private readonly DispatcherTimer _pollTimer;
+        private readonly DispatcherTimer _statusBarTimer;
         private readonly LiveTelemetryBuffer _telemetryBuffer = new LiveTelemetryBuffer();
 
         private bool _pollInProgress;
@@ -53,14 +54,29 @@ namespace QPX1200SPController.ViewModels
         private double _maxOcpToSet;
         private double _minOcpToSet;
         private double _ocpToSet;
-        private EventStatus _eventStatus;
         private PowerSupplySettingStatus _powerSupplySettingStatus;
         private bool _isInConfigMode;
         private bool _isControlPanelVisible = true;
+        private bool _isFollowingLive = true;
         private GraphTimeWindowOption _selectedGraphTimeWindow;
         private SampleRateOption _selectedSampleRate;
+        private string _lastReadingText = "No readings yet";
+        private string _databaseStatusText;
+        private bool _isDatabaseFailing;
+        private string _traceStatusText;
+        private bool _isTraceOn;
+        private double _limitMinVoltage;
+        private double _limitMaxVoltage;
+        private double _limitMinCurrent;
+        private double _limitMaxCurrent;
+        private int _limitRetentionDays;
+        private string _limitsStatusText;
 
+        /// <summary>New samples arrived or the time window changed: redraw the live plots.</summary>
         public event Action GraphDataUpdated;
+
+        /// <summary>A Y-axis mode or range changed: re-apply the Y limits of the live plots.</summary>
+        public event Action GraphYAxisChanged;
 
         public PowerSupplyStatus Status
         {
@@ -155,10 +171,231 @@ namespace QPX1200SPController.ViewModels
             get => _selectedGraphTimeWindow;
             set
             {
-                if (Set(ref _selectedGraphTimeWindow, value))
+                if (!Set(ref _selectedGraphTimeWindow, value))
+                    return;
+                // Picking a window means "show me that window": go back to following the newest data.
+                if (!IsFollowingLive)
+                    IsFollowingLive = true;
+                else
                     GraphDataUpdated?.Invoke();
             }
         }
+
+        /// <summary>
+        /// True: the live plots scroll with the newest data. Zooming or panning a plot switches it off
+        /// so the view stays where the user put it.
+        /// </summary>
+        public bool IsFollowingLive
+        {
+            get => _isFollowingLive;
+            set
+            {
+                if (SetProperty(ref _isFollowingLive, value) && value)
+                    GraphDataUpdated?.Invoke();
+            }
+        }
+
+        public bool IsDarkTheme
+        {
+            get => ThemeService.Instance.IsDark;
+            set
+            {
+                if (value == ThemeService.Instance.IsDark)
+                    return;
+                ThemeService.Instance.Apply(value);
+                _settings.DarkTheme = value;
+                _settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        #region Read-outs and status bar
+
+        /// <summary>CV / CC / UNREG and the protection trips, as indicator chips.</summary>
+        public IReadOnlyList<StatusFlag> StatusFlags { get; } = new[]
+        {
+            new StatusFlag("CV", StatusFlagKind.Good, "Constant voltage regulation"),
+            new StatusFlag("CC", StatusFlagKind.Notice, "Constant current regulation (current limit reached)"),
+            new StatusFlag("UNREG", StatusFlagKind.Notice, "Output unregulated"),
+            new StatusFlag("OVP", StatusFlagKind.Trip, "Over-voltage protection tripped (use TRIP RESET)"),
+            new StatusFlag("OCP", StatusFlagKind.Trip, "Over-current protection tripped (use TRIP RESET)"),
+            new StatusFlag("SENSE", StatusFlagKind.Trip, "Output sense trip (use TRIP RESET)"),
+            new StatusFlag("FAULT", StatusFlagKind.Trip, "Fault trip (use TRIP RESET)")
+        };
+
+        public string RegulationText
+        {
+            get
+            {
+                var e = Status?.EventStatus;
+                if (!IsConnected || e == null)
+                    return "Mode ---";
+                if (e.ConstantCurrentMode == 1)
+                    return "Mode CC";
+                if (e.UnregulatedMode == 1)
+                    return "Mode UNREG";
+                return e.ConstantVoltageMode == 1 ? "Mode CV" : "Mode ---";
+            }
+        }
+
+        /// <summary>Load resistance seen by the supply (V / I), shown while current flows.</summary>
+        public string LoadText
+        {
+            get
+            {
+                var s = Status;
+                if (!IsConnected || s == null || !s.OutputEnabled || s.Current < 0.005)
+                    return string.Empty;
+                return string.Format(CultureInfo.InvariantCulture, "Load {0:0.###} Ω", s.Voltage / s.Current);
+            }
+        }
+
+        public string LastReadingText
+        {
+            get => _lastReadingText;
+            private set => SetProperty(ref _lastReadingText, value);
+        }
+
+        public string DatabaseStatusText
+        {
+            get => _databaseStatusText;
+            private set => SetProperty(ref _databaseStatusText, value);
+        }
+
+        public bool IsDatabaseFailing
+        {
+            get => _isDatabaseFailing;
+            private set => SetProperty(ref _isDatabaseFailing, value);
+        }
+
+        public string TraceStatusText
+        {
+            get => _traceStatusText;
+            private set => SetProperty(ref _traceStatusText, value);
+        }
+
+        public bool IsTraceOn
+        {
+            get => _isTraceOn;
+            private set => SetProperty(ref _isTraceOn, value);
+        }
+
+        public string VersionText { get; } = "v" + typeof(MainViewModel).Assembly.GetName().Version.ToString(3);
+
+        private void RefreshStatusBar()
+        {
+            if (!_databaseService.IsAvailable)
+            {
+                DatabaseStatusText = "Database unavailable - see App Logs";
+                IsDatabaseFailing = true;
+            }
+            else if (_databaseService.IsWriteFailing)
+            {
+                DatabaseStatusText = "Database writes failing - data kept in memory and retried";
+                IsDatabaseFailing = true;
+            }
+            else
+            {
+                DatabaseStatusText = "Logging to database";
+                IsDatabaseFailing = false;
+            }
+
+            TraceService.Instance.CheckExpiry();
+            IsTraceOn = TraceService.Instance.IsEnabled;
+            TraceStatusText = IsTraceOn ? $"Trace ON until {TraceService.Instance.EnabledUntil:HH:mm}" : null;
+        }
+
+        #endregion
+
+        #region Soft limits and storage
+
+        public double InstrumentMaxVoltage => Settings.InstrumentMaxVoltage;
+        public double InstrumentMaxCurrent => Settings.InstrumentMaxCurrent;
+
+        public double LimitMinVoltage
+        {
+            get => _limitMinVoltage;
+            set => SetProperty(ref _limitMinVoltage, value);
+        }
+
+        public double LimitMaxVoltage
+        {
+            get => _limitMaxVoltage;
+            set => SetProperty(ref _limitMaxVoltage, value);
+        }
+
+        public double LimitMinCurrent
+        {
+            get => _limitMinCurrent;
+            set => SetProperty(ref _limitMinCurrent, value);
+        }
+
+        public double LimitMaxCurrent
+        {
+            get => _limitMaxCurrent;
+            set => SetProperty(ref _limitMaxCurrent, value);
+        }
+
+        /// <summary>Database rows older than this many days are deleted; 0 keeps everything.</summary>
+        public int LimitRetentionDays
+        {
+            get => _limitRetentionDays;
+            set => SetProperty(ref _limitRetentionDays, value);
+        }
+
+        public string LimitsStatusText
+        {
+            get => _limitsStatusText;
+            private set => SetProperty(ref _limitsStatusText, value);
+        }
+
+        public ICommand SaveLimitsCommand { get; }
+        public ICommand RevertLimitsCommand { get; }
+
+        private void LoadLimitFields()
+        {
+            LimitMinVoltage = _settings.MinVoltage;
+            LimitMaxVoltage = _settings.MaxVoltage;
+            LimitMinCurrent = _settings.MinCurrent;
+            LimitMaxCurrent = _settings.MaxCurrent;
+            LimitRetentionDays = _settings.RetentionDays;
+        }
+
+        private void SaveLimits()
+        {
+            string error = null;
+            if (LimitMinVoltage < 0 || LimitMaxVoltage > Settings.InstrumentMaxVoltage || LimitMinVoltage >= LimitMaxVoltage)
+                error = $"Voltage limits must satisfy 0 ≤ min < max ≤ {Settings.InstrumentMaxVoltage:F0} V.";
+            else if (LimitMinCurrent < 0 || LimitMaxCurrent > Settings.InstrumentMaxCurrent || LimitMinCurrent >= LimitMaxCurrent)
+                error = $"Current limits must satisfy 0 ≤ min < max ≤ {Settings.InstrumentMaxCurrent:F0} A.";
+            else if (LimitRetentionDays < 0)
+                error = "Days to keep must be 0 (keep everything) or more.";
+
+            if (error != null)
+            {
+                ShowError(error);
+                return;
+            }
+
+            _settings.MinVoltage = LimitMinVoltage;
+            _settings.MaxVoltage = LimitMaxVoltage;
+            _settings.MinCurrent = LimitMinCurrent;
+            _settings.MaxCurrent = LimitMaxCurrent;
+            _settings.RetentionDays = LimitRetentionDays;
+            _settings.Save();
+            SettingsUpdated(_settings);
+            LoadLimitFields();
+
+            var inv = CultureInfo.InvariantCulture;
+            LoggingService.Instance.LogInfo(string.Format(inv,
+                    "Soft limits saved: {0:F3}-{1:F3} V, {2:F3}-{3:F3} A; keep data {4}.",
+                    _settings.MinVoltage, _settings.MaxVoltage, _settings.MinCurrent, _settings.MaxCurrent,
+                    _settings.RetentionDays == 0 ? "forever" : _settings.RetentionDays + " days"),
+                nameof(MainViewModel), nameof(SaveLimits));
+            LimitsStatusText = $"Saved at {DateTime.Now:HH:mm:ss}";
+        }
+
+        #endregion
 
         /// <summary>Polling and database logging rate. Persisted in settings.xml.</summary>
         public SampleRateOption SelectedSampleRate
@@ -283,12 +520,6 @@ namespace QPX1200SPController.ViewModels
             set { Set(ref _ocpToSet, value); ValidateAll(); }
         }
 
-        public EventStatus EventStatus
-        {
-            get => _eventStatus;
-            set => Set(ref _eventStatus, value);
-        }
-
         public bool IsInConfigMode
         {
             get => _isInConfigMode;
@@ -315,6 +546,9 @@ namespace QPX1200SPController.ViewModels
             SetOcpCommand = new RelayCommand(async _ => await SetOcpAsync(), _ => IsConnected && IsInConfigMode);
             SendMiscCommand = new RelayCommand(async p => await SendMiscCommandAsync(p as string), _ => IsConnected && IsInConfigMode);
             ToggleControlPanelCommand = new RelayCommand(_ => IsControlPanelVisible = !IsControlPanelVisible);
+            ToggleThemeCommand = new RelayCommand(_ => IsDarkTheme = !IsDarkTheme);
+            SaveLimitsCommand = new RelayCommand(_ => SaveLimits());
+            RevertLimitsCommand = new RelayCommand(_ => { LoadLimitFields(); LimitsStatusText = null; });
 
             _pollTimer = new DispatcherTimer();
             _pollTimer.Tick += async (s, e) => await PollAsync();
@@ -322,13 +556,21 @@ namespace QPX1200SPController.ViewModels
             SelectedSampleRate = SampleRates.FirstOrDefault(r => r.Hz == _settings.SampleRateHz) ?? SampleRates[1];
             _pollTimer.Interval = SelectedSampleRate.Interval;
             SettingsUpdated(_settings);
+            LoadLimitFields();
+
+            _statusBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _statusBarTimer.Tick += (s, e) => RefreshStatusBar();
+            _statusBarTimer.Start();
+            RefreshStatusBar();
 
             _powerSupplyService.ConnectionStateChanged += OnConnectionStateChanged;
         }
 
+        public ICommand ToggleThemeCommand { get; }
+
         private void AttachYAxisSettings(PlotYAxisSettings settings)
         {
-            settings.PropertyChanged += (_, __) => GraphDataUpdated?.Invoke();
+            settings.PropertyChanged += (_, __) => GraphYAxisChanged?.Invoke();
         }
 
         public TelemetrySample[] GetGraphSamples()
@@ -444,10 +686,14 @@ namespace QPX1200SPController.ViewModels
                     };
                     SupplyName = string.Empty;
                     IsInConfigMode = false;
+                    foreach (var flag in StatusFlags)
+                        flag.IsActive = false;
                     GraphDataUpdated?.Invoke();
                     break;
             }
 
+            RaisePropertyChanged(nameof(RegulationText));
+            RaisePropertyChanged(nameof(LoadText));
             CommandManager.InvalidateRequerySuggested();
         }
 
@@ -511,7 +757,14 @@ namespace QPX1200SPController.ViewModels
         private void ApplyStatus(PowerSupplyStatus status)
         {
             Status = status;
-            EventStatus = status.EventStatus;
+            var e = status.EventStatus ?? new EventStatus();
+            int[] bits = { e.ConstantVoltageMode, e.ConstantCurrentMode, e.UnregulatedMode,
+                           e.OverVoltageTrip, e.OverCurrentTrip, e.OutputSenseTrip, e.FaultTrip };
+            for (int k = 0; k < StatusFlags.Count; k++)
+                StatusFlags[k].IsActive = bits[k] == 1;
+            RaisePropertyChanged(nameof(RegulationText));
+            RaisePropertyChanged(nameof(LoadText));
+            LastReadingText = "Last reading " + status.Timestamp.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
             _databaseService.EnqueueSample(status);
             _telemetryBuffer.Add(status.Timestamp, status.Voltage, status.Current, status.Power);

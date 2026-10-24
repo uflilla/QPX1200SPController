@@ -18,23 +18,6 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <StackPanel
-      Grid.Row="0"
-      Margin="0,0,0,12"
-      HorizontalAlignment="Center"
-      Orientation="Horizontal">
-      <materialDesign:PackIcon
-        Width="28"
-        Height="28"
-        VerticalAlignment="Center"
-        Kind="DatabaseSearchOutline" />
-      <TextBlock
-        Margin="10,0,0,0"
-        VerticalAlignment="Center"
-        Style="{StaticResource MaterialDesignHeadline5TextBlock}"
-        Text="Data Logs" />
-    </StackPanel>
-
     <materialDesign:Card
       Grid.Row="1"
       Margin="0,0,0,12"
@@ -211,13 +194,13 @@
               <Style BasedOn="{StaticResource MaterialDesignDataGridRow}" TargetType="DataGridRow">
                 <Style.Triggers>
                   <DataTrigger Binding="{Binding Result}" Value="Failed">
-                    <Setter Property="Foreground" Value="#C62828" />
+                    <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
                   </DataTrigger>
                   <DataTrigger Binding="{Binding Result}" Value="Mismatch">
-                    <Setter Property="Foreground" Value="#E65100" />
+                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
                   </DataTrigger>
                   <DataTrigger Binding="{Binding Result}" Value="Lost">
-                    <Setter Property="Foreground" Value="#E65100" />
+                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
                   </DataTrigger>
                 </Style.Triggers>
               </Style>

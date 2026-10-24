@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using ScottPlot;
 using ScottPlot.WPF;
 using QPX1200SPController.Models;
+using QPX1200SPController.Services;
 
 namespace QPX1200SPController.Helpers
 {
@@ -20,11 +21,11 @@ namespace QPX1200SPController.Helpers
     /// </summary>
     public sealed class HistoryPlotPresenter : IDisposable
     {
-        private static readonly ScottPlot.Color CommandColor = ScottPlot.Color.FromHex("#1E88E5");
-        private static readonly ScottPlot.Color MismatchColor = ScottPlot.Color.FromHex("#FB8C00");
-        private static readonly ScottPlot.Color ErrorColor = ScottPlot.Color.FromHex("#E53935");
-        private static readonly ScottPlot.Color ConnectionColor = ScottPlot.Color.FromHex("#757575");
-        private static readonly ScottPlot.Color CursorColor = ScottPlot.Color.FromHex("#424242");
+        private static ScottPlot.Color CommandColor => PlotStyling.ToScottPlot(ThemeService.Instance.Palette.CommandMarker);
+        private static ScottPlot.Color MismatchColor => PlotStyling.ToScottPlot(ThemeService.Instance.Palette.Warn);
+        private static ScottPlot.Color ErrorColor => PlotStyling.ToScottPlot(ThemeService.Instance.Palette.Error);
+        private static ScottPlot.Color ConnectionColor => PlotStyling.ToScottPlot(ThemeService.Instance.Palette.ConnectionMarker);
+        private static ScottPlot.Color CursorColor => PlotStyling.ToScottPlot(ThemeService.Instance.Palette.Cursor);
         private const int MaxDrawnCommandMarkers = 150;
         private const float MarkerHitPixels = 6f;
 
@@ -49,9 +50,9 @@ namespace QPX1200SPController.Helpers
             _isError = isError;
             _channels = new[]
             {
-                new PlotChannel(voltage, "Voltage (V)", "V", "F3", ScottPlot.Colors.OrangeRed, s => s.Voltage),
-                new PlotChannel(current, "Current (A)", "A", "F3", ScottPlot.Colors.DodgerBlue, s => s.Current),
-                new PlotChannel(power, "Power (W)", "W", "F2", ScottPlot.Colors.ForestGreen, s => s.Power)
+                new PlotChannel(voltage, "Voltage (V)", "V", "F3", p => p.Voltage, s => s.Voltage),
+                new PlotChannel(current, "Current (A)", "A", "F3", p => p.Current, s => s.Current),
+                new PlotChannel(power, "Power (W)", "W", "F2", p => p.Power, s => s.Power)
             };
 
             // Zooming or panning any plot moves all three.
@@ -191,11 +192,11 @@ namespace QPX1200SPController.Helpers
                 (int)Math.Ceiling(container.ActualWidth * scale), (int)Math.Ceiling(container.ActualHeight * scale),
                 96 * scale, 96 * scale, PixelFormats.Pbgra32);
 
-            // Render onto a white background (the plot borders are partly transparent).
+            // Render onto the plot background colour (the plot borders are partly transparent).
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+                dc.DrawRectangle(new SolidColorBrush(ThemeService.Instance.PlotBackground), null, new Rect(0, 0, container.ActualWidth, container.ActualHeight));
                 dc.DrawRectangle(new VisualBrush(container), null, new Rect(0, 0, container.ActualWidth, container.ActualHeight));
             }
             bitmap.Render(visual);
@@ -224,14 +225,37 @@ namespace QPX1200SPController.Helpers
 
         #region Drawing
 
+        /// <summary>Redraws everything in the current theme's colours, keeping the zoom.</summary>
+        public void ApplyTheme()
+        {
+            var before = _channels.Select(c => c.Control.Plot.Axes.GetLimits()).ToArray();
+            foreach (var channel in _channels)
+            {
+                ApplyChannelTheme(channel);
+                channel.Control.Plot.Clear();
+                AddSeries(channel);
+            }
+            RebuildMarkers();
+
+            for (int k = 0; k < _channels.Length; k++)
+            {
+                _channels[k].Control.Plot.Axes.SetLimits(before[k]);
+                _channels[k].Control.Refresh();
+            }
+        }
+
+        private static void ApplyChannelTheme(PlotChannel channel)
+        {
+            PlotStyling.ApplyTheme(channel.Control.Plot);
+            channel.Control.Plot.Axes.Left.Label.ForeColor = channel.Color;
+        }
+
         private static void Configure(PlotChannel channel)
         {
             var plot = channel.Control.Plot;
-            plot.FigureBackground.Color = ScottPlot.Color.FromHex("#FFFFFF");
-            plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFF");
-            plot.Axes.DateTimeTicksBottom();
+            PlotStyling.UseTimeAxis(plot);
             plot.Axes.Left.Label.Text = channel.Title;
-            plot.Axes.Left.Label.ForeColor = channel.Color;
+            ApplyChannelTheme(channel);
             plot.Axes.Left.Label.FontSize = 14;
             plot.Axes.Left.TickLabelStyle.FontSize = 12;
             // Same Y-axis width on all three plots so their time axes (and markers) line up.
@@ -244,8 +268,6 @@ namespace QPX1200SPController.Helpers
         private void AddSeries(PlotChannel channel)
         {
             var plot = channel.Control.Plot;
-            Configure(channel);
-
             var xs = _series.Xs;
             var ys = channel.Selector(_series);
             double gapDays = _series.GapThresholdSeconds / 86400.0;
@@ -477,14 +499,16 @@ namespace QPX1200SPController.Helpers
 
         private sealed class PlotChannel
         {
-            public PlotChannel(WpfPlot control, string title, string unit, string format, ScottPlot.Color color,
-                Func<HistorySeries, double[]> selector)
+            private readonly Func<ThemePalette, System.Windows.Media.Color> _colorSelector;
+
+            public PlotChannel(WpfPlot control, string title, string unit, string format,
+                Func<ThemePalette, System.Windows.Media.Color> colorSelector, Func<HistorySeries, double[]> selector)
             {
                 Control = control;
                 Title = title;
                 Unit = unit;
                 Format = format;
-                Color = color;
+                _colorSelector = colorSelector;
                 Selector = selector;
             }
 
@@ -492,7 +516,7 @@ namespace QPX1200SPController.Helpers
             public string Title { get; }
             public string Unit { get; }
             public string Format { get; }
-            public ScottPlot.Color Color { get; }
+            public ScottPlot.Color Color => PlotStyling.ToScottPlot(_colorSelector(ThemeService.Instance.Palette));
             public Func<HistorySeries, double[]> Selector { get; }
             public ScottPlot.Plottables.VerticalLine Cursor { get; set; }
             public List<ScottPlot.Plottables.VerticalLine> MarkerLines { get; } = new List<ScottPlot.Plottables.VerticalLine>();

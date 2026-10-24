@@ -68,6 +68,9 @@ namespace QPX1200SPController.Services
         /// <summary>True while writes are failing (rows are kept in memory and retried).</summary>
         public bool IsWriteFailing => _writeFailing;
 
+        /// <summary>False if the database could not be opened or created (nothing is being logged).</summary>
+        public bool IsAvailable => _initialized;
+
         #region Schema
 
         private SQLiteConnection Open()

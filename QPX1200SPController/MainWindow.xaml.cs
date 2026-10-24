@@ -3,14 +3,14 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Windows;
 using QPX1200SPController.Helpers;
+using QPX1200SPController.Services;
 using QPX1200SPController.ViewModels;
-using ScottPlot;
 
 namespace QPX1200SPController
 {
     public partial class MainWindow : Window
     {
-        private const double DefaultControlWidth = 300;
+        private const double DefaultControlWidth = 310;
 
         private MainViewModel _viewModel;
         private LivePlotPresenter _voltagePresenter;
@@ -62,16 +62,25 @@ namespace QPX1200SPController
             if (_voltagePresenter == null)
             {
                 _voltagePresenter = new LivePlotPresenter(
-                    VoltagePlot, "Voltage", "V", "V", "F3",
-                    s => s.Voltage, Colors.OrangeRed, _viewModel.VoltageYAxis);
+                    VoltagePlot, "Voltage (V)", "V", "F3", s => s.Voltage, p => p.Voltage, _viewModel.VoltageYAxis);
                 _currentPresenter = new LivePlotPresenter(
-                    CurrentPlot, "Current", "A", "A", "F3",
-                    s => s.Current, Colors.DodgerBlue, _viewModel.CurrentYAxis);
+                    CurrentPlot, "Current (A)", "A", "F3", s => s.Current, p => p.Current, _viewModel.CurrentYAxis);
                 _powerPresenter = new LivePlotPresenter(
-                    PowerPlot, "Power", "W", "W", "F2",
-                    s => s.Power, Colors.ForestGreen, _viewModel.PowerYAxis);
+                    PowerPlot, "Power (W)", "W", "F2", s => s.Power, p => p.Power, _viewModel.PowerYAxis);
+
+                // Zooming or panning one plot moves the time axis of all three.
+                var plots = new[] { VoltagePlot, CurrentPlot, PowerPlot };
+                foreach (var a in plots)
+                    foreach (var b in plots)
+                        if (a != b)
+                            a.Plot.Axes.Link(b, x: true, y: false);
+
+                foreach (var presenter in Presenters)
+                    presenter.UserNavigated += OnPlotNavigated;
 
                 _viewModel.GraphDataUpdated += OnGraphDataUpdated;
+                _viewModel.GraphYAxisChanged += OnGraphYAxisChanged;
+                ThemeService.Instance.ThemeChanged += OnThemeChanged;
             }
 
             ApplyControlPanelVisibility(_viewModel.IsControlPanelVisible);
@@ -100,9 +109,9 @@ namespace QPX1200SPController
                     ? _savedControlWidth
                     : new GridLength(DefaultControlWidth);
 
-                ControlColumn.MinWidth = 180;
+                ControlColumn.MinWidth = 260;
                 ControlColumn.Width = width;
-                ControlSplitterColumn.Width = new GridLength(5);
+                ControlSplitterColumn.Width = new GridLength(6);
                 ControlSplitter.Visibility = Visibility.Visible;
                 ControlPanelBorder.Visibility = Visibility.Visible;
             }
@@ -129,15 +138,41 @@ namespace QPX1200SPController
             RefreshGraphs();
         }
 
+        private LivePlotPresenter[] Presenters => new[] { _voltagePresenter, _currentPresenter, _powerPresenter };
+
         private void RefreshGraphs()
         {
             if (_viewModel == null || _voltagePresenter == null)
                 return;
 
             var samples = _viewModel.GetGraphSamples();
-            _voltagePresenter.Update(samples);
-            _currentPresenter.Update(samples);
-            _powerPresenter.Update(samples);
+            bool follow = _viewModel.IsFollowingLive;
+            var window = _viewModel.SelectedGraphTimeWindow?.Duration;
+            foreach (var presenter in Presenters)
+                presenter.Update(samples, follow, window);
+        }
+
+        private void OnPlotNavigated()
+        {
+            // The user is looking at something: stop scrolling the view away from under them.
+            if (_viewModel != null)
+                _viewModel.IsFollowingLive = false;
+        }
+
+        private void OnGraphYAxisChanged()
+        {
+            if (_voltagePresenter == null)
+                return;
+            foreach (var presenter in Presenters)
+                presenter.ApplyYAxis();
+        }
+
+        private void OnThemeChanged()
+        {
+            if (_voltagePresenter == null)
+                return;
+            foreach (var presenter in Presenters)
+                presenter.ApplyTheme();
         }
 
         private async void MainWindow_Closing(object sender, CancelEventArgs e)
@@ -178,8 +213,10 @@ namespace QPX1200SPController
             if (_viewModel != null)
             {
                 _viewModel.GraphDataUpdated -= OnGraphDataUpdated;
+                _viewModel.GraphYAxisChanged -= OnGraphYAxisChanged;
                 _viewModel.PropertyChanged -= ViewModelOnPropertyChanged;
             }
+            ThemeService.Instance.ThemeChanged -= OnThemeChanged;
             _voltagePresenter?.Dispose();
             _currentPresenter?.Dispose();
             _powerPresenter?.Dispose();
