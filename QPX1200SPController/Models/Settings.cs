@@ -44,6 +44,9 @@ namespace QPX1200SPController.Models
 
         public bool ConfirmOutputOn { get; set; } = true;
 
+        /// <summary>Vertical event markers on the live plots.</summary>
+        public bool ShowLiveMarkers { get; set; } = true;
+
         public AlarmSettings Alarms { get; set; } = new AlarmSettings();
 
         /// <summary>The sequence last edited in the Sequencer tab.</summary>
@@ -52,9 +55,9 @@ namespace QPX1200SPController.Models
         public bool SequenceOutputOnAtStart { get; set; } = true;
         public bool SequenceOutputOffAtEnd { get; set; } = true;
 
-        [XmlIgnore] public double MinOvpLevel => 0;
+        [XmlIgnore] public double MinOvpLevel => 2;   // manual: OVP 2-65 V, OCP 2-55 A
         [XmlIgnore] public double MaxOvpLevel => 61;
-        [XmlIgnore] public double MinOcpLevel => 0;
+        [XmlIgnore] public double MinOcpLevel => 2;
         [XmlIgnore] public double MaxOcpLevel => 50;
 
         private static Settings Load()

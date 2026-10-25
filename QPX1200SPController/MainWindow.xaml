@@ -12,8 +12,8 @@
   Title="QPX1200SP Power Supply Controller"
   Width="1360"
   Height="860"
-  MinWidth="1000"
-  MinHeight="660"
+  MinWidth="1180"
+  MinHeight="700"
   Background="{DynamicResource MaterialDesign.Brush.Background}"
   DataContext="{Binding Main, Source={StaticResource Locator}}"
   FontFamily="{materialDesign:MaterialDesignFont}"
@@ -21,7 +21,9 @@
   Style="{StaticResource MaterialDesignWindow}"
   TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
   WindowStartupLocation="CenterScreen"
+  WindowState="Maximized"
   mc:Ignorable="d">
+  <!--  Width/Height are the size when the window is restored from maximized  -->
 
   <Window.Resources>
     <Style
@@ -42,13 +44,18 @@
       <Setter Property="Padding" Value="12,0" />
       <Setter Property="FontSize" Value="12" />
     </Style>
+
+    <!--  Page buttons in the header bar (instead of a separate tab strip, to leave room for meters and plots)  -->
     <Style
-      x:Key="CompactTabItem"
-      BasedOn="{StaticResource MaterialDesignTabItem}"
-      TargetType="TabItem">
-      <Setter Property="Padding" Value="16,6" />
-      <Setter Property="MinHeight" Value="36" />
+      x:Key="HeaderTab"
+      BasedOn="{StaticResource MaterialDesignTabRadioButton}"
+      TargetType="RadioButton">
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Margin" Value="1,0" />
+      <Setter Property="Padding" Value="12,0" />
       <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderBrush" Value="White" />
     </Style>
 
     <!--  Small rounded label used for the header chips and the status-register indicators  -->
@@ -66,6 +73,12 @@
       <Setter Property="Margin" Value="0,14,0,6" />
     </Style>
 
+    <Style x:Key="RangeHint" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Opacity" Value="0.6" />
+      <Setter Property="Margin" Value="0,0,0,0" />
+    </Style>
+
     <Style x:Key="SetButton" BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
       <Setter Property="Height" Value="30" />
       <Setter Property="MinWidth" Value="56" />
@@ -75,18 +88,18 @@
     </Style>
 
     <Style x:Key="SetPointInput" TargetType="xceed:DoubleUpDown" BasedOn="{StaticResource {x:Type xceed:DoubleUpDown}}">
-      <Setter Property="Height" Value="30" />
-      <Setter Property="FontSize" Value="15" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="FontSize" Value="14" />
       <Setter Property="FormatString" Value="F3" />
       <Setter Property="Increment" Value="0.1" />
       <Setter Property="TextAlignment" Value="Right" />
     </Style>
 
-    <!--  Overlay with the Y-axis mode on top of each live plot  -->
+    <!--  Y-axis mode in the top left corner of each live plot, just right of the Y axis, so it never covers the newest samples at the right edge  -->
     <Style x:Key="PlotOverlay" TargetType="Border">
-      <Setter Property="Margin" Value="0,6,8,0" />
+      <Setter Property="Margin" Value="84,4,0,0" />
       <Setter Property="Padding" Value="6,2" />
-      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Panel.ZIndex" Value="1" />
       <Setter Property="Background" Value="{DynamicResource OverlayBrush}" />
@@ -143,37 +156,38 @@
   <materialDesign:DialogHost Identifier="RootDialog">
     <DockPanel>
 
-      <!--  ===== Header =====  -->
+      <!--  ===== Header: title, page buttons, theme, output and connection chips =====  -->
       <Border
-        Padding="14,8"
+        Padding="12,2"
         Background="{DynamicResource HeaderBrush}"
         DockPanel.Dock="Top"
         TextElement.Foreground="White">
         <DockPanel>
           <Border
-            Width="36"
-            Height="36"
+            Width="28"
+            Height="28"
             Background="#33FFFFFF"
-            CornerRadius="18"
+            CornerRadius="14"
             DockPanel.Dock="Left">
             <materialDesign:PackIcon
-              Width="22"
-              Height="22"
+              Width="18"
+              Height="18"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"
               Foreground="#FFD54F"
               Kind="Flash" />
           </Border>
           <StackPanel
-            Margin="12,0,0,0"
+            MaxWidth="230"
+            Margin="10,0,0,0"
             VerticalAlignment="Center"
             DockPanel.Dock="Left">
-            <TextBlock FontSize="16" FontWeight="SemiBold">
-              <Run Text="QPX1200SP" />
-              <Run FontSize="13" FontWeight="Normal" Text="  Monitoring &amp; Control" />
-            </TextBlock>
             <TextBlock
-              FontSize="11"
+              FontSize="14"
+              FontWeight="SemiBold"
+              Text="QPX1200SP" />
+            <TextBlock
+              FontSize="10"
               Opacity="0.8"
               Text="{Binding SupplyName, TargetNullValue='No supply connected', FallbackValue='No supply connected'}"
               TextTrimming="CharacterEllipsis">
@@ -187,6 +201,73 @@
                 </Style>
               </TextBlock.Style>
             </TextBlock>
+          </StackPanel>
+
+          <StackPanel
+            Margin="20,0,0,0"
+            DockPanel.Dock="Left"
+            Orientation="Horizontal">
+            <RadioButton
+              x:Name="MonitorTab"
+              AutomationProperties.Name="Monitoring &amp; Control"
+              GroupName="Pages"
+              IsChecked="True"
+              Style="{StaticResource HeaderTab}">
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="Gauge" />
+                <TextBlock VerticalAlignment="Center" Text="Monitoring &amp; Control" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton
+              x:Name="SequencerTab"
+              AutomationProperties.Name="Sequencer"
+              GroupName="Pages"
+              Style="{StaticResource HeaderTab}">
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="PlaylistPlay" />
+                <TextBlock VerticalAlignment="Center" Text="Sequencer" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton
+              x:Name="HistoryTab"
+              AutomationProperties.Name="History"
+              GroupName="Pages"
+              Style="{StaticResource HeaderTab}">
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="ChartTimelineVariant" />
+                <TextBlock VerticalAlignment="Center" Text="History" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton
+              x:Name="DataLogsTab"
+              AutomationProperties.Name="Data Logs"
+              GroupName="Pages"
+              Style="{StaticResource HeaderTab}">
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="DatabaseSearchOutline" />
+                <TextBlock VerticalAlignment="Center" Text="Data Logs" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton
+              x:Name="ConsoleTab"
+              AutomationProperties.Name="SCPI Console"
+              GroupName="Pages"
+              Style="{StaticResource HeaderTab}">
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="Console" />
+                <TextBlock VerticalAlignment="Center" Text="SCPI Console" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton
+              x:Name="AppLogsTab"
+              AutomationProperties.Name="App Logs"
+              GroupName="Pages"
+              Style="{StaticResource HeaderTab}">
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="TextBoxOutline" />
+                <TextBlock VerticalAlignment="Center" Text="App Logs" />
+              </StackPanel>
+            </RadioButton>
           </StackPanel>
 
           <Button
@@ -353,8 +434,8 @@
         <DockPanel>
           <TextBlock
             DockPanel.Dock="Right"
-            Opacity="0.6"
-            Text="{Binding VersionText}" />
+            Opacity="0.75"
+            Text="Developed by: Umar Faruq Lilla" />
           <StackPanel Orientation="Horizontal">
             <materialDesign:PackIcon
               Width="14"
@@ -444,38 +525,73 @@
         </DockPanel>
       </Border>
 
-      <!--  ===== Tabs =====  -->
-      <TabControl
-        Padding="0"
-        materialDesign:ColorZoneAssist.Mode="Standard"
-        ItemContainerStyle="{StaticResource CompactTabItem}"
-        Style="{StaticResource MaterialDesignTabControl}">
-        <TabItem AutomationProperties.Name="Monitoring &amp; Control">
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="Gauge" />
-              <TextBlock VerticalAlignment="Center" Text="Monitoring &amp; Control" />
-            </StackPanel>
-          </TabItem.Header>
-          <Grid>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto" />
-              <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+      <!--  ===== Pages (picked with the buttons in the header) =====  -->
+      <Grid>
+        <Grid Visibility="{Binding IsChecked, ElementName=MonitorTab, Converter={StaticResource BoolToVisibilityConverter}}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
 
-            <!--  Connection bar  -->
-            <materialDesign:Card
-              Grid.Row="0"
-              Margin="10,8,10,4"
-              Padding="12,6"
-              materialDesign:ElevationAssist.Elevation="Dp1">
-              <DockPanel>
-                <Button
+          <!--  Connection bar  -->
+          <materialDesign:Card
+            Grid.Row="0"
+            Margin="8,4,8,2"
+            Padding="10,2"
+            materialDesign:ElevationAssist.Elevation="Dp1">
+            <DockPanel>
+              <StackPanel
+                VerticalAlignment="Center"
+                DockPanel.Dock="Right"
+                Orientation="Horizontal">
+                <TextBlock
+                  Margin="0,0,6,0"
+                  VerticalAlignment="Center"
+                  FontSize="12"
+                  Opacity="0.8"
+                  Text="Plot window" />
+                <ComboBox
+                  Width="96"
+                  VerticalAlignment="Center"
+                  AutomationProperties.Name="Time window"
+                  DisplayMemberPath="DisplayName"
+                  FontSize="12"
+                  ItemsSource="{Binding GraphTimeWindows}"
+                  SelectedItem="{Binding SelectedGraphTimeWindow}"
+                  Style="{StaticResource MaterialDesignComboBox}"
+                  ToolTip="Time span shown on the live plots while following live data. Picking one turns Follow live on again." />
+                <ToggleButton
+                  Margin="16,0,0,0"
+                  VerticalAlignment="Center"
+                  AutomationProperties.Name="Follow live"
+                  IsChecked="{Binding IsFollowingLive}"
+                  Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                  ToolTip="Keep the live plots scrolling with the newest data. Zooming or panning a plot turns this off; turn it on (or pick a plot window) to follow again." />
+                <TextBlock
                   Margin="8,0,0,0"
+                  VerticalAlignment="Center"
+                  FontSize="12"
+                  Opacity="0.8"
+                  Text="Follow live" />
+                <ToggleButton
+                  Margin="16,0,0,0"
+                  VerticalAlignment="Center"
+                  AutomationProperties.Name="Markers"
+                  IsChecked="{Binding ShowLiveMarkers}"
+                  Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                  ToolTip="Show this session's commands (dashed), trips (solid red), alarms and connection events (dotted grey) as vertical lines on the live plots; hover one to see what it was." />
+                <TextBlock
+                  Margin="8,0,0,0"
+                  VerticalAlignment="Center"
+                  FontSize="12"
+                  Opacity="0.8"
+                  Text="Markers" />
+                <Button
+                  Margin="16,0,0,0"
+                  AutomationProperties.Name="Toggle control panel"
                   Command="{Binding ToggleControlPanelCommand}"
-                  DockPanel.Dock="Right"
                   Style="{StaticResource CompactOutlinedButton}"
-                  ToolTip="{Binding ControlPanelToggleText}">
+                  ToolTip="Show or hide the control panel">
                   <StackPanel Orientation="Horizontal">
                     <materialDesign:PackIcon
                       Width="16"
@@ -486,127 +602,93 @@
                     <TextBlock VerticalAlignment="Center" Text="{Binding ControlPanelToggleText}" />
                   </StackPanel>
                 </Button>
-                <StackPanel Orientation="Horizontal">
-                  <materialDesign:PackIcon
-                    Width="18"
-                    Height="18"
-                    Margin="0,0,8,0"
-                    VerticalAlignment="Center"
-                    Kind="LanConnect"
-                    Opacity="0.8" />
-                  <ComboBox
-                    Width="170"
-                    Margin="0,0,10,0"
-                    VerticalAlignment="Center"
-                    materialDesign:HintAssist.Hint="IP address"
-                    AutomationProperties.Name="IP address"
-                    FontSize="13"
-                    IsEditable="True"
-                    ItemsSource="{Binding RecentIpAddresses}"
-                    Style="{StaticResource MaterialDesignComboBox}"
-                    Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}"
-                    ToolTip="Type an address or pick a recent one" />
-                  <Button
-                    Margin="0,0,6,0"
-                    Command="{Binding ConnectCommand}"
-                    Content="CONNECT"
-                    Style="{StaticResource CompactRaisedButton}" />
-                  <Button
-                    Margin="0,0,18,0"
-                    Command="{Binding DisconnectCommand}"
-                    Content="DISCONNECT"
-                    Style="{StaticResource CompactOutlinedButton}"
-                    ToolTip="Disconnect (unlock the controls first)" />
-                  <TextBlock
-                    Margin="0,0,6,0"
-                    VerticalAlignment="Center"
-                    FontSize="12"
-                    Opacity="0.8"
-                    Text="Sample rate" />
-                  <ComboBox
-                    Width="80"
-                    VerticalAlignment="Center"
-                    AutomationProperties.Name="Sample rate"
-                    DisplayMemberPath="DisplayName"
-                    FontSize="12"
-                    ItemsSource="{Binding SampleRates}"
-                    SelectedItem="{Binding SelectedSampleRate}"
-                    Style="{StaticResource MaterialDesignComboBox}"
-                    ToolTip="How often the supply is read and logged to the database" />
-                </StackPanel>
-              </DockPanel>
-            </materialDesign:Card>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon
+                  Width="18"
+                  Height="18"
+                  Margin="0,0,8,0"
+                  VerticalAlignment="Center"
+                  Kind="LanConnect"
+                  Opacity="0.8" />
+                <ComboBox
+                  Width="160"
+                  Margin="0,0,10,0"
+                  VerticalAlignment="Center"
+                  materialDesign:HintAssist.Hint="IP address"
+                  AutomationProperties.Name="IP address"
+                  FontSize="13"
+                  IsEditable="True"
+                  ItemsSource="{Binding RecentIpAddresses}"
+                  Style="{StaticResource MaterialDesignComboBox}"
+                  Text="{Binding IpAddress, UpdateSourceTrigger=PropertyChanged}"
+                  ToolTip="Type an address or pick a recent one" />
+                <Button
+                  Margin="0,0,6,0"
+                  Command="{Binding ConnectCommand}"
+                  Content="CONNECT"
+                  Style="{StaticResource CompactRaisedButton}" />
+                <Button
+                  Margin="0,0,18,0"
+                  Command="{Binding DisconnectCommand}"
+                  Content="DISCONNECT"
+                  Style="{StaticResource CompactOutlinedButton}"
+                  ToolTip="Disconnect (unlock the controls first)" />
+                <TextBlock
+                  Margin="0,0,6,0"
+                  VerticalAlignment="Center"
+                  FontSize="12"
+                  Opacity="0.8"
+                  Text="Sample rate" />
+                <ComboBox
+                  Width="80"
+                  VerticalAlignment="Center"
+                  AutomationProperties.Name="Sample rate"
+                  DisplayMemberPath="DisplayName"
+                  FontSize="12"
+                  ItemsSource="{Binding SampleRates}"
+                  SelectedItem="{Binding SelectedSampleRate}"
+                  Style="{StaticResource MaterialDesignComboBox}"
+                  ToolTip="How often the supply is read and logged to the database" />
+              </StackPanel>
+            </DockPanel>
+          </materialDesign:Card>
 
-            <!--  Main: Meters | Graphs | Controls  -->
-            <Grid
-              x:Name="MainContentGrid"
-              Grid.Row="1"
-              Margin="6,0,6,6">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition
-                  x:Name="DigitalColumn"
-                  Width="5*"
-                  MinWidth="230" />
-                <ColumnDefinition Width="6" />
-                <ColumnDefinition
-                  x:Name="GraphColumn"
-                  Width="6*"
-                  MinWidth="260" />
-                <ColumnDefinition x:Name="ControlSplitterColumn" Width="6" />
-                <ColumnDefinition
-                  x:Name="ControlColumn"
-                  Width="310"
-                  MinWidth="260" />
-              </Grid.ColumnDefinitions>
+          <!--  Main: digital meters | live plots | control panel  -->
+          <Grid
+            x:Name="MainContentGrid"
+            Grid.Row="1"
+            Margin="6,0,6,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition
+                x:Name="DigitalColumn"
+                Width="5*"
+                MinWidth="260" />
+              <ColumnDefinition Width="6" />
+              <ColumnDefinition
+                x:Name="GraphColumn"
+                Width="6*"
+                MinWidth="300" />
+              <ColumnDefinition x:Name="ControlSplitterColumn" Width="6" />
+              <ColumnDefinition
+                x:Name="ControlColumn"
+                Width="300"
+                MinWidth="260" />
+            </Grid.ColumnDefinitions>
 
-              <!--  Meters  -->
-              <materialDesign:Card
-                Grid.Column="0"
-                Margin="4"
-                Padding="12"
-                materialDesign:ElevationAssist.Elevation="Dp1">
-                <Grid>
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="2*" />
-                    <RowDefinition Height="2*" />
-                    <RowDefinition Height="1.6*" />
-                    <RowDefinition Height="Auto" />
-                  </Grid.RowDefinitions>
-
-                  <!--  Session counters  -->
-                  <DockPanel
-                    Grid.Row="4"
-                    Margin="2,8,0,0"
-                    AutomationProperties.Name="Session counters"
-                    TextElement.FontSize="12">
-                    <Button
-                      Width="26"
-                      Height="26"
-                      Padding="0"
-                      AutomationProperties.Name="Reset counters"
-                      Command="{Binding ResetCountersCommand}"
-                      DockPanel.Dock="Right"
-                      Style="{StaticResource MaterialDesignIconButton}"
-                      ToolTip="Reset the session counters">
-                      <materialDesign:PackIcon Width="16" Height="16" Kind="Restart" />
-                    </Button>
-                    <WrapPanel VerticalAlignment="Center">
-                      <TextBlock Margin="0,0,14,0" ToolTip="Energy delivered while the output was on">
-                        <Run Foreground="{DynamicResource PowerBrush}" Text="Energy" />
-                        <Run FontWeight="SemiBold" Text="{Binding EnergyText, Mode=OneWay}" />
-                      </TextBlock>
-                      <TextBlock Margin="0,0,14,0" ToolTip="Charge delivered (current × time)">
-                        <Run Foreground="{DynamicResource CurrentBrush}" Text="Charge" />
-                        <Run FontWeight="SemiBold" Text="{Binding ChargeText, Mode=OneWay}" />
-                      </TextBlock>
-                      <TextBlock Margin="0,0,14,0" ToolTip="Time the output was on">
-                        <Run Foreground="{DynamicResource OkBrush}" Text="ON time" />
-                        <Run FontWeight="SemiBold" Text="{Binding OutputOnTimeText, Mode=OneWay}" />
-                      </TextBlock>
-                      <TextBlock Opacity="0.6" Text="{Binding CounterStartText}" />
-                    </WrapPanel>
-                  </DockPanel>
+            <!--  Meters: voltage and current stacked, as large as the column allows  -->
+            <materialDesign:Card
+              Grid.Column="0"
+              Margin="4"
+              Padding="12"
+              materialDesign:ElevationAssist.Elevation="Dp1">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
                   <ItemsControl
                     Grid.Row="0"
@@ -673,441 +755,411 @@
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
 
-                  <View:MeterTile
-                    Grid.Row="1"
-                    Margin="0,4"
-                    Accent="{DynamicResource VoltageBrush}"
-                    AutomationProperties.Name="Voltage"
-                    FooterLeft="{Binding PowerSupplySettingStatus.SetVoltage, StringFormat='Set {0:F2} V', FallbackValue='Set --- V'}"
-                    FooterRight="{Binding PowerSupplySettingStatus.SetOvpLevel, StringFormat='OVP {0:F2} V', FallbackValue='OVP --- V'}"
-                    Icon="SineWave"
-                    IsLive="{Binding Status.OutputEnabled}"
-                    Label="VOLTAGE"
-                    Unit="V"
-                    Value="{Binding Status.Voltage, StringFormat='{}{0:F3}'}" />
-                  <View:MeterTile
-                    Grid.Row="2"
-                    Margin="0,4"
-                    Accent="{DynamicResource CurrentBrush}"
-                    AutomationProperties.Name="Current"
-                    FooterLeft="{Binding PowerSupplySettingStatus.SetCurrent, StringFormat='Set {0:F2} A', FallbackValue='Set --- A'}"
-                    FooterRight="{Binding PowerSupplySettingStatus.SetOcpLevel, StringFormat='OCP {0:F2} A', FallbackValue='OCP --- A'}"
-                    Icon="CurrentDc"
-                    IsLive="{Binding Status.OutputEnabled}"
-                    Label="CURRENT"
-                    Unit="A"
-                    Value="{Binding Status.Current, StringFormat='{}{0:F3}'}" />
-                  <View:MeterTile
-                    Grid.Row="3"
-                    Margin="0,4,0,0"
-                    Accent="{DynamicResource PowerBrush}"
-                    AutomationProperties.Name="Power"
-                    FooterLeft="{Binding RegulationText}"
-                    FooterRight="{Binding LoadText}"
-                    Icon="LightningBoltOutline"
-                    IsLive="{Binding Status.OutputEnabled}"
-                    Label="POWER"
-                    Unit="W"
-                    Value="{Binding Status.Power, StringFormat='{}{0:F2}'}" />
-                </Grid>
-              </materialDesign:Card>
+                <View:MeterTile
+                  Grid.Row="1"
+                  Margin="0,4"
+                  Accent="{DynamicResource VoltageBrush}"
+                  AutomationProperties.Name="Voltage"
+                  FooterLeft="{Binding PowerSupplySettingStatus.SetVoltage, StringFormat='Set {0:F3} V', FallbackValue='Set --- V'}"
+                  FooterRight="{Binding PowerSupplySettingStatus.SetOvpLevel, StringFormat='OVP {0:F1} V', FallbackValue='OVP --- V'}"
+                  Icon="SineWave"
+                  IsLive="{Binding Status.OutputEnabled}"
+                  Label="VOLTAGE"
+                  Unit="V"
+                  Value="{Binding Status.Voltage, StringFormat='{}{0:F3}'}" />
+                <View:MeterTile
+                  Grid.Row="2"
+                  Margin="0,4"
+                  Accent="{DynamicResource CurrentBrush}"
+                  AutomationProperties.Name="Current"
+                  FooterLeft="{Binding PowerSupplySettingStatus.SetCurrent, StringFormat='Limit {0:F2} A', FallbackValue='Limit --- A'}"
+                  FooterRight="{Binding PowerSupplySettingStatus.SetOcpLevel, StringFormat='OCP {0:F1} A', FallbackValue='OCP --- A'}"
+                  Icon="CurrentDc"
+                  IsLive="{Binding Status.OutputEnabled}"
+                  Label="CURRENT"
+                  Unit="A"
+                  Value="{Binding Status.Current, StringFormat='{}{0:F3}'}" />
 
-              <GridSplitter
-                Grid.Column="1"
-                Width="6"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                ResizeBehavior="PreviousAndNext"
-                ShowsPreview="True" />
-
-              <!--  Live graphs  -->
-              <materialDesign:Card
-                Grid.Column="2"
-                Margin="4"
-                Padding="10"
-                materialDesign:ElevationAssist.Elevation="Dp1">
-                <Grid>
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="*" />
-                  </Grid.RowDefinitions>
-
-                  <DockPanel Grid.Row="0" Margin="2,0,0,6">
-                    <StackPanel
-                      VerticalAlignment="Center"
+                <!--  Session counters  -->
+                <DockPanel
+                  Grid.Row="3"
+                  Margin="2,6,0,0"
+                  AutomationProperties.Name="Session counters"
+                  TextElement.FontSize="12">
+                    <Button
+                      Width="26"
+                      Height="26"
+                      Padding="0"
+                      AutomationProperties.Name="Reset counters"
+                      Command="{Binding ResetCountersCommand}"
                       DockPanel.Dock="Right"
-                      Orientation="Horizontal">
-                      <ToggleButton
-                        AutomationProperties.Name="Follow live"
-                        IsChecked="{Binding IsFollowingLive}"
-                        Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                        ToolTip="Keep the plots scrolling with the newest data. Zooming or panning a plot turns this off." />
-                      <TextBlock
-                        Margin="8,0,0,0"
-                        VerticalAlignment="Center"
-                        FontSize="12"
-                        Text="Follow live" />
-                    </StackPanel>
+                      Style="{StaticResource MaterialDesignIconButton}"
+                      ToolTip="Reset the session counters">
+                      <materialDesign:PackIcon Width="16" Height="16" Kind="Restart" />
+                    </Button>
+                    <WrapPanel VerticalAlignment="Center">
+                      <TextBlock Margin="0,0,14,0" ToolTip="Energy delivered while the output was on">
+                        <Run Foreground="{DynamicResource PowerBrush}" Text="Energy" />
+                        <Run FontWeight="SemiBold" Text="{Binding EnergyText, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Margin="0,0,14,0" ToolTip="Charge delivered (current × time)">
+                        <Run Foreground="{DynamicResource CurrentBrush}" Text="Charge" />
+                        <Run FontWeight="SemiBold" Text="{Binding ChargeText, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Margin="0,0,14,0" ToolTip="Time the output was on">
+                        <Run Foreground="{DynamicResource OkBrush}" Text="ON time" />
+                        <Run FontWeight="SemiBold" Text="{Binding OutputOnTimeText, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Opacity="0.6" Text="{Binding CounterStartText}" />
+                    </WrapPanel>
+                </DockPanel>
+              </Grid>
+            </materialDesign:Card>
+
+            <GridSplitter
+              Grid.Column="1"
+              Width="6"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              Background="Transparent"
+              ResizeBehavior="PreviousAndNext"
+              ShowsPreview="True" />
+
+            <!--  Live plots of voltage and current  -->
+            <materialDesign:Card
+              Grid.Column="2"
+              Margin="4"
+              Padding="8"
+              materialDesign:ElevationAssist.Elevation="Dp1">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,2">
+                  <scottPlot:WpfPlot x:Name="VoltagePlot" />
+                  <Border Style="{StaticResource PlotOverlay}">
+                    <ContentControl Content="{Binding VoltageYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
+                  </Border>
+                </Grid>
+                <Grid Grid.Row="1" Margin="0,2">
+                  <scottPlot:WpfPlot x:Name="CurrentPlot" />
+                  <Border Style="{StaticResource PlotOverlay}">
+                    <ContentControl Content="{Binding CurrentYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
+                  </Border>
+                </Grid>
+              </Grid>
+            </materialDesign:Card>
+
+            <GridSplitter
+              x:Name="ControlSplitter"
+              Grid.Column="3"
+              Width="6"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch"
+              Background="Transparent"
+              ResizeBehavior="PreviousAndNext"
+              ShowsPreview="True" />
+
+            <!--  Control panel (visibility driven by code-behind with column widths). Compact so it fits a maximized 1080p window without scrolling.  -->
+            <materialDesign:Card
+              x:Name="ControlPanelBorder"
+              Grid.Column="4"
+              Margin="4"
+              Padding="14,8"
+              materialDesign:ElevationAssist.Elevation="Dp1"
+              TextElement.FontSize="13">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                  <!--  Lock  -->
+                  <DockPanel>
+                    <ToggleButton
+                      AutomationProperties.Name="Enable Configuration"
+                      DockPanel.Dock="Right"
+                      IsChecked="{Binding IsInConfigMode}"
+                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                      ToolTip="Unlock the controls to change the supply's settings" />
                     <materialDesign:PackIcon
                       Width="20"
                       Height="20"
                       Margin="0,0,8,0"
-                      VerticalAlignment="Center"
-                      Kind="ChartLine"
-                      Opacity="0.8" />
-                    <TextBlock
-                      VerticalAlignment="Center"
-                      FontWeight="SemiBold"
-                      Text="Live" />
-                    <ComboBox
-                      Width="110"
-                      Margin="14,0,0,0"
-                      HorizontalAlignment="Left"
-                      VerticalAlignment="Center"
-                      AutomationProperties.Name="Time window"
-                      DisplayMemberPath="DisplayName"
-                      ItemsSource="{Binding GraphTimeWindows}"
-                      SelectedItem="{Binding SelectedGraphTimeWindow}"
-                      Style="{StaticResource MaterialDesignComboBox}"
-                      ToolTip="Time window shown while following live data" />
+                      VerticalAlignment="Center">
+                      <materialDesign:PackIcon.Style>
+                        <Style TargetType="materialDesign:PackIcon">
+                          <Setter Property="Kind" Value="LockOutline" />
+                          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsInConfigMode}" Value="True">
+                              <Setter Property="Kind" Value="LockOpenVariantOutline" />
+                              <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </materialDesign:PackIcon.Style>
+                    </materialDesign:PackIcon>
+                    <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Setter Property="Text" Value="Controls locked" />
+                          <Setter Property="ToolTip" Value="Switch on to make changes" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsInConfigMode}" Value="True">
+                              <Setter Property="Text" Value="Controls unlocked" />
+                              <Setter Property="ToolTip" Value="Commands go to the supply" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
                   </DockPanel>
 
-                  <Grid Grid.Row="1" Margin="0,2">
-                    <scottPlot:WpfPlot x:Name="VoltagePlot" />
-                    <Border Style="{StaticResource PlotOverlay}">
-                      <ContentControl Content="{Binding VoltageYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
-                    </Border>
-                  </Grid>
-                  <Grid Grid.Row="2" Margin="0,2">
-                    <scottPlot:WpfPlot x:Name="CurrentPlot" />
-                    <Border Style="{StaticResource PlotOverlay}">
-                      <ContentControl Content="{Binding CurrentYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
-                    </Border>
-                  </Grid>
-                  <Grid Grid.Row="3" Margin="0,2">
-                    <scottPlot:WpfPlot x:Name="PowerPlot" />
-                    <Border Style="{StaticResource PlotOverlay}">
-                      <ContentControl Content="{Binding PowerYAxis}" ContentTemplate="{StaticResource YAxisOverlayTemplate}" />
-                    </Border>
-                  </Grid>
-                </Grid>
-              </materialDesign:Card>
+                  <!--  Output  -->
+                  <Button
+                    Height="36"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Stretch"
+                    materialDesign:ButtonAssist.CornerRadius="8"
+                    AutomationProperties.Name="Toggle output"
+                    Command="{Binding ToggleOutputCommand}"
+                    FontSize="15"
+                    FontWeight="Bold"
+                    Foreground="White">
+                    <Button.Style>
+                      <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
+                        <Setter Property="Background" Value="#2E7D32" />
+                        <Setter Property="BorderBrush" Value="#2E7D32" />
+                        <Setter Property="Content" Value="TURN OUTPUT ON" />
+                        <Setter Property="ToolTip" Value="Turn the output on (unlock the controls first). Asks for confirmation." />
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Status.OutputEnabled}" Value="True">
+                            <Setter Property="Background" Value="#C62828" />
+                            <Setter Property="BorderBrush" Value="#C62828" />
+                            <Setter Property="Content" Value="TURN OUTPUT OFF" />
+                            <Setter Property="ToolTip" Value="Turn the output off. Always available while connected, even with the controls locked." />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
 
-              <GridSplitter
-                x:Name="ControlSplitter"
-                Grid.Column="3"
-                Width="6"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Background="Transparent"
-                ResizeBehavior="PreviousAndNext"
-                ShowsPreview="True" />
+                  <!--  Last command and its result (EER? check and read-back)  -->
+                  <DockPanel
+                    Margin="0,6,0,0"
+                    ToolTip="{Binding LastCommandText, TargetNullValue='Last configuration command sent to the supply and its result: EER? error check and read-back (all are stored in the database)'}">
+                    <DockPanel.Style>
+                      <Style TargetType="DockPanel">
+                        <Setter Property="Opacity" Value="0.7" />
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding LastCommandFailed}" Value="True">
+                            <Setter Property="Opacity" Value="1" />
+                            <Setter Property="TextElement.Foreground" Value="{DynamicResource ErrorBrush}" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </DockPanel.Style>
+                    <materialDesign:PackIcon
+                      Width="14"
+                      Height="14"
+                      Margin="0,1,5,0"
+                      VerticalAlignment="Top"
+                      DockPanel.Dock="Left"
+                      Kind="History" />
+                    <TextBlock
+                      MaxHeight="30"
+                      FontFamily="Consolas"
+                      FontSize="11"
+                      Text="{Binding LastCommandText, TargetNullValue='No command sent yet'}"
+                      TextTrimming="CharacterEllipsis"
+                      TextWrapping="Wrap" />
+                  </DockPanel>
 
-              <!--  Control panel (visibility driven by code-behind with column widths)  -->
-              <materialDesign:Card
-                x:Name="ControlPanelBorder"
-                Grid.Column="4"
-                Margin="4"
-                Padding="14,10"
-                materialDesign:ElevationAssist.Elevation="Dp1">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                  <StackPanel>
-                    <!--  Lock  -->
-                    <DockPanel>
-                      <ToggleButton
-                        AutomationProperties.Name="Enable Configuration"
-                        DockPanel.Dock="Right"
-                        IsChecked="{Binding IsInConfigMode}"
-                        Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                        ToolTip="Unlock the controls to change the supply's settings" />
-                      <materialDesign:PackIcon
-                        Width="20"
-                        Height="20"
-                        Margin="0,0,8,0"
-                        VerticalAlignment="Center">
-                        <materialDesign:PackIcon.Style>
-                          <Style TargetType="materialDesign:PackIcon">
-                            <Setter Property="Kind" Value="LockOutline" />
-                            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding IsInConfigMode}" Value="True">
-                                <Setter Property="Kind" Value="LockOpenVariantOutline" />
-                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </materialDesign:PackIcon.Style>
-                      </materialDesign:PackIcon>
-                      <StackPanel Margin="0,0,10,0" VerticalAlignment="Center">
-                        <TextBlock FontSize="14" FontWeight="SemiBold" Text="Controls" />
-                        <TextBlock
-                          FontSize="11"
-                          Opacity="0.7"
-                          TextWrapping="Wrap">
-                          <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                              <Setter Property="Text" Value="Locked - switch on to make changes" />
-                              <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsInConfigMode}" Value="True">
-                                  <Setter Property="Text" Value="Unlocked - commands go to the supply" />
-                                </DataTrigger>
-                              </Style.Triggers>
-                            </Style>
-                          </TextBlock.Style>
-                        </TextBlock>
-                      </StackPanel>
-                    </DockPanel>
+                  <!--  Set-points and protection: label with its allowed range | value | SET  -->
+                  <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="86" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <!--  Output  -->
+                    <StackPanel Grid.Row="0" VerticalAlignment="Center">
+                      <TextBlock
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource VoltageBrush}"
+                        Text="Voltage" />
+                      <TextBlock Style="{StaticResource RangeHint}">
+                        <Run Text="{Binding MinVoltageToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" /><Run Text="–" /><Run Text="{Binding MaxVoltageToSet, Mode=OneWay, StringFormat='{}{0:F2} V'}" />
+                      </TextBlock>
+                    </StackPanel>
+                    <xceed:DoubleUpDown
+                      Grid.Row="0"
+                      Grid.Column="1"
+                      Margin="0,2"
+                      AutomationProperties.Name="Voltage set-point"
+                      FormatString="F3"
+                      Increment="0.1"
+                      Maximum="{Binding MaxVoltageToSet}"
+                      Minimum="{Binding MinVoltageToSet}"
+                      Style="{StaticResource SetPointInput}"
+                      Value="{Binding VoltageToSet}" />
                     <Button
-                      Height="46"
-                      Margin="0,14,0,0"
-                      HorizontalAlignment="Stretch"
-                      materialDesign:ButtonAssist.CornerRadius="8"
-                      AutomationProperties.Name="Toggle output"
-                      Command="{Binding ToggleOutputCommand}"
-                      FontSize="15"
-                      FontWeight="Bold"
-                      Foreground="White">
+                      Grid.Row="0"
+                      Grid.Column="2"
+                      Margin="6,0,0,0"
+                      AutomationProperties.Name="Set voltage"
+                      Command="{Binding SetVoltageCommand}"
+                      ToolTip="Send the voltage (1 mV resolution). Checked with EER? and read back in the same exchange.">
                       <Button.Style>
-                        <Style BasedOn="{StaticResource MaterialDesignRaisedButton}" TargetType="Button">
-                          <Setter Property="Background" Value="#2E7D32" />
-                          <Setter Property="BorderBrush" Value="#2E7D32" />
-                          <Setter Property="Content" Value="TURN OUTPUT ON" />
+                        <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
                           <Style.Triggers>
-                            <DataTrigger Binding="{Binding Status.OutputEnabled}" Value="True">
-                              <Setter Property="Background" Value="#C62828" />
-                              <Setter Property="BorderBrush" Value="#C62828" />
-                              <Setter Property="Content" Value="TURN OUTPUT OFF" />
+                            <DataTrigger Binding="{Binding IsVoltageValid}" Value="False">
+                              <Setter Property="IsEnabled" Value="False" />
                             </DataTrigger>
                           </Style.Triggers>
                         </Style>
                       </Button.Style>
                     </Button>
 
-                    <!--  Set-points  -->
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="SET-POINTS" />
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                      </Grid.RowDefinitions>
-
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
                       <TextBlock
-                        Grid.Row="0"
-                        Width="62"
-                        VerticalAlignment="Center"
-                        FontWeight="SemiBold"
-                        Foreground="{DynamicResource VoltageBrush}"
-                        Text="Voltage" />
-                      <xceed:DoubleUpDown
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        AutomationProperties.Name="Voltage set-point"
-                        Maximum="{Binding MaxVoltageToSet}"
-                        Minimum="{Binding MinVoltageToSet}"
-                        Style="{StaticResource SetPointInput}"
-                        Value="{Binding VoltageToSet}" />
-                      <Button
-                        Grid.Row="0"
-                        Grid.Column="2"
-                        Margin="8,0,0,0"
-                        AutomationProperties.Name="Set voltage"
-                        Command="{Binding SetVoltageCommand}">
-                        <Button.Style>
-                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding IsVoltageValid}" Value="False">
-                                <Setter Property="IsEnabled" Value="False" />
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </Button.Style>
-                      </Button>
-                      <TextBlock
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Margin="0,2,0,10"
-                        FontSize="11"
-                        Opacity="0.6">
-                        <Run Text="{Binding MinVoltageToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
-                        <Run Text="–" />
-                        <Run Text="{Binding MaxVoltageToSet, Mode=OneWay, StringFormat='{}{0:F2} V'}" />
-                      </TextBlock>
-
-                      <TextBlock
-                        Grid.Row="2"
-                        VerticalAlignment="Center"
                         FontWeight="SemiBold"
                         Foreground="{DynamicResource CurrentBrush}"
                         Text="Current" />
-                      <xceed:DoubleUpDown
-                        Grid.Row="2"
-                        Grid.Column="1"
-                        AutomationProperties.Name="Current set-point"
-                        Maximum="{Binding MaxCurrentToSet}"
-                        Minimum="{Binding MinCurrentToSet}"
-                        Style="{StaticResource SetPointInput}"
-                        Value="{Binding CurrentToSet}" />
-                      <Button
-                        Grid.Row="2"
-                        Grid.Column="2"
-                        Margin="8,0,0,0"
-                        AutomationProperties.Name="Set current"
-                        Command="{Binding SetCurrentCommand}">
-                        <Button.Style>
-                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding IsCurrentValid}" Value="False">
-                                <Setter Property="IsEnabled" Value="False" />
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </Button.Style>
-                      </Button>
-                      <TextBlock
-                        Grid.Row="3"
-                        Grid.Column="1"
-                        Margin="0,2,0,0"
-                        FontSize="11"
-                        Opacity="0.6">
-                        <Run Text="{Binding MinCurrentToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
-                        <Run Text="–" />
-                        <Run Text="{Binding MaxCurrentToSet, Mode=OneWay, StringFormat='{}{0:F2} A'}" />
+                      <TextBlock Style="{StaticResource RangeHint}">
+                        <Run Text="{Binding MinCurrentToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" /><Run Text="–" /><Run Text="{Binding MaxCurrentToSet, Mode=OneWay, StringFormat='{}{0:F2} A'}" />
                       </TextBlock>
-                    </Grid>
+                    </StackPanel>
+                    <xceed:DoubleUpDown
+                      Grid.Row="1"
+                      Grid.Column="1"
+                      Margin="0,2"
+                      AutomationProperties.Name="Current set-point"
+                      FormatString="F2"
+                      Increment="0.1"
+                      Maximum="{Binding MaxCurrentToSet}"
+                      Minimum="{Binding MinCurrentToSet}"
+                      Style="{StaticResource SetPointInput}"
+                      Value="{Binding CurrentToSet}" />
+                    <Button
+                      Grid.Row="1"
+                      Grid.Column="2"
+                      Margin="6,0,0,0"
+                      AutomationProperties.Name="Set current"
+                      Command="{Binding SetCurrentCommand}"
+                      ToolTip="Send the current limit (10 mA resolution). Checked with EER? and read back in the same exchange.">
+                      <Button.Style>
+                        <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCurrentValid}" Value="False">
+                              <Setter Property="IsEnabled" Value="False" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
 
-                    <!--  Protection  -->
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="PROTECTION" />
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                      </Grid.RowDefinitions>
-
-                      <TextBlock
-                        Grid.Row="0"
-                        Width="62"
-                        VerticalAlignment="Center"
-                        FontWeight="SemiBold"
-                        Text="OVP" />
-                      <xceed:DoubleUpDown
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        AutomationProperties.Name="OVP level"
-                        Maximum="{Binding MaxOvpToSet}"
-                        Minimum="{Binding MinOvpToSet}"
-                        Style="{StaticResource SetPointInput}"
-                        Value="{Binding OvpToSet}" />
-                      <Button
-                        Grid.Row="0"
-                        Grid.Column="2"
-                        Margin="8,0,0,0"
-                        AutomationProperties.Name="Set OVP"
-                        Command="{Binding SetOvpCommand}">
-                        <Button.Style>
-                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding IsOvpValid}" Value="False">
-                                <Setter Property="IsEnabled" Value="False" />
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </Button.Style>
-                      </Button>
-                      <TextBlock
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Margin="0,2,0,10"
-                        FontSize="11"
-                        Opacity="0.6">
-                        <Run Text="{Binding MinOvpToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
-                        <Run Text="–" />
-                        <Run Text="{Binding MaxOvpToSet, Mode=OneWay, StringFormat='{}{0:F2} V'}" />
+                    <StackPanel Grid.Row="2" VerticalAlignment="Center">
+                      <TextBlock FontWeight="SemiBold" Text="OVP" />
+                      <TextBlock Style="{StaticResource RangeHint}">
+                        <Run Text="{Binding MinOvpToSet, Mode=OneWay, StringFormat='{}{0:F1}'}" /><Run Text="–" /><Run Text="{Binding MaxOvpToSet, Mode=OneWay, StringFormat='{}{0:F1} V'}" />
                       </TextBlock>
+                    </StackPanel>
+                    <xceed:DoubleUpDown
+                      Grid.Row="2"
+                      Grid.Column="1"
+                      Margin="0,2"
+                      AutomationProperties.Name="OVP level"
+                      FormatString="F1"
+                      Increment="0.5"
+                      Maximum="{Binding MaxOvpToSet}"
+                      Minimum="{Binding MinOvpToSet}"
+                      Style="{StaticResource SetPointInput}"
+                      Value="{Binding OvpToSet}" />
+                    <Button
+                      Grid.Row="2"
+                      Grid.Column="2"
+                      Margin="6,0,0,0"
+                      AutomationProperties.Name="Set OVP"
+                      Command="{Binding SetOvpCommand}"
+                      ToolTip="Send the over-voltage trip level (0.1 V resolution). Checked with EER? and read back in the same exchange.">
+                      <Button.Style>
+                        <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsOvpValid}" Value="False">
+                              <Setter Property="IsEnabled" Value="False" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
 
-                      <TextBlock
-                        Grid.Row="2"
-                        VerticalAlignment="Center"
-                        FontWeight="SemiBold"
-                        Text="OCP" />
-                      <xceed:DoubleUpDown
-                        Grid.Row="2"
-                        Grid.Column="1"
-                        AutomationProperties.Name="OCP level"
-                        Maximum="{Binding MaxOcpToSet}"
-                        Minimum="{Binding MinOcpToSet}"
-                        Style="{StaticResource SetPointInput}"
-                        Value="{Binding OcpToSet}" />
-                      <Button
-                        Grid.Row="2"
-                        Grid.Column="2"
-                        Margin="8,0,0,0"
-                        AutomationProperties.Name="Set OCP"
-                        Command="{Binding SetOcpCommand}">
-                        <Button.Style>
-                          <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding IsOcpValid}" Value="False">
-                                <Setter Property="IsEnabled" Value="False" />
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </Button.Style>
-                      </Button>
-                      <TextBlock
-                        Grid.Row="3"
-                        Grid.Column="1"
-                        Margin="0,2,0,0"
-                        FontSize="11"
-                        Opacity="0.6">
-                        <Run Text="{Binding MinOcpToSet, Mode=OneWay, StringFormat='{}{0:F2}'}" />
-                        <Run Text="–" />
-                        <Run Text="{Binding MaxOcpToSet, Mode=OneWay, StringFormat='{}{0:F2} A'}" />
+                    <StackPanel Grid.Row="3" VerticalAlignment="Center">
+                      <TextBlock FontWeight="SemiBold" Text="OCP" />
+                      <TextBlock Style="{StaticResource RangeHint}">
+                        <Run Text="{Binding MinOcpToSet, Mode=OneWay, StringFormat='{}{0:F1}'}" /><Run Text="–" /><Run Text="{Binding MaxOcpToSet, Mode=OneWay, StringFormat='{}{0:F1} A'}" />
                       </TextBlock>
-                    </Grid>
+                    </StackPanel>
+                    <xceed:DoubleUpDown
+                      Grid.Row="3"
+                      Grid.Column="1"
+                      Margin="0,2"
+                      AutomationProperties.Name="OCP level"
+                      FormatString="F1"
+                      Increment="0.5"
+                      Maximum="{Binding MaxOcpToSet}"
+                      Minimum="{Binding MinOcpToSet}"
+                      Style="{StaticResource SetPointInput}"
+                      Value="{Binding OcpToSet}" />
+                    <Button
+                      Grid.Row="3"
+                      Grid.Column="2"
+                      Margin="6,0,0,0"
+                      AutomationProperties.Name="Set OCP"
+                      Command="{Binding SetOcpCommand}"
+                      ToolTip="Send the over-current trip level (0.1 A resolution). Checked with EER? and read back in the same exchange.">
+                      <Button.Style>
+                        <Style BasedOn="{StaticResource SetButton}" TargetType="Button">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsOcpValid}" Value="False">
+                              <Setter Property="IsEnabled" Value="False" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
+                  </Grid>
 
-                    <UniformGrid Margin="0,12,0,0" Columns="2">
-                      <Button
-                        Margin="0,0,4,0"
-                        Command="{Binding SendMiscCommand}"
-                        CommandParameter="TRIPRST"
-                        Content="TRIP RESET"
-                        Style="{StaticResource CompactOutlinedButton}"
-                        ToolTip="Clear a latched OVP / OCP / sense / fault trip" />
-                      <Button
-                        Margin="4,0,0,0"
-                        Command="{Binding SendMiscCommand}"
-                        CommandParameter="LOCAL"
-                        Content="LOCAL"
-                        Style="{StaticResource CompactOutlinedButton}"
-                        ToolTip="Return the supply to front-panel control" />
-                    </UniformGrid>
+                  <UniformGrid Margin="0,8,0,4" Columns="2">
+                    <Button
+                      Margin="0,0,4,0"
+                      Command="{Binding SendMiscCommand}"
+                      CommandParameter="TRIPRST"
+                      Content="TRIP RESET"
+                      Style="{StaticResource CompactOutlinedButton}"
+                      ToolTip="Clear a latched OVP / OCP / sense / fault trip (TRIPRST). Remove the cause first." />
+                    <Button
+                      Margin="4,0,0,0"
+                      Command="{Binding SendMiscCommand}"
+                      CommandParameter="LOCAL"
+                      Content="LOCAL"
+                      Style="{StaticResource CompactOutlinedButton}"
+                      ToolTip="Return the supply to front-panel control" />
+                  </UniformGrid>
 
                     <!--  Soft limits and storage (was the Settings tab)  -->
                     <Expander
-                      Margin="-14,16,-14,0"
+                      Margin="-14,4,-14,0"
                       Padding="14,0,14,8"
                       Background="Transparent"
-                      materialDesign:ExpanderAssist.HorizontalHeaderPadding="14,8"
-                      AutomationProperties.Name="Soft limits and storage">
+                      materialDesign:ExpanderAssist.HorizontalHeaderPadding="14,4"
+                      x:Name="SoftLimitsExpander"
+                      AutomationProperties.Name="Soft limits and storage"
+                      Expanded="OnPanelExpanderExpanded">
                       <Expander.Header>
                         <StackPanel Orientation="Horizontal">
                           <materialDesign:PackIcon
@@ -1122,13 +1174,7 @@
                         </StackPanel>
                       </Expander.Header>
                       <StackPanel>
-                        <TextBlock
-                          Margin="0,0,0,8"
-                          FontSize="11"
-                          Opacity="0.7"
-                          Text="The voltage and current set-points can only be sent inside these limits."
-                          TextWrapping="Wrap" />
-                        <Grid>
+                        <Grid ToolTip="The voltage and current set-points can only be sent inside these limits.">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1198,7 +1244,7 @@
                             Value="{Binding LimitMaxCurrent}" />
                         </Grid>
 
-                        <DockPanel Margin="0,12,0,0">
+                        <DockPanel Margin="0,8,0,0">
                           <xceed:IntegerUpDown
                             Width="80"
                             Height="28"
@@ -1207,24 +1253,21 @@
                             Maximum="3650"
                             Minimum="0"
                             Value="{Binding LimitRetentionDays}" />
-                          <StackPanel Margin="0,0,8,0" VerticalAlignment="Center">
-                            <TextBlock Text="Keep logged data (days)" />
-                            <TextBlock
-                              FontSize="11"
-                              Opacity="0.7"
-                              Text="0 keeps everything. Older data is deleted permanently."
-                              TextWrapping="Wrap" />
-                          </StackPanel>
+                          <TextBlock
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Text="Keep logged data (days)"
+                            ToolTip="0 keeps everything. Older data is deleted permanently." />
                         </DockPanel>
 
                         <CheckBox
-                          Margin="0,12,0,0"
+                          Margin="0,8,0,0"
                           AutomationProperties.Name="Ask before turning the output ON"
                           Content="Ask before turning the output ON"
                           IsChecked="{Binding ConfirmOutputOn}"
                           ToolTip="Saved immediately" />
 
-                        <DockPanel Margin="0,12,0,0">
+                        <DockPanel Margin="0,8,0,0">
                           <Button
                             Command="{Binding SaveLimitsCommand}"
                             Content="SAVE"
@@ -1251,8 +1294,10 @@
                       Margin="-14,0,-14,0"
                       Padding="14,0,14,8"
                       Background="Transparent"
-                      materialDesign:ExpanderAssist.HorizontalHeaderPadding="14,8"
+                      materialDesign:ExpanderAssist.HorizontalHeaderPadding="14,4"
+                      x:Name="AlarmsExpander"
                       AutomationProperties.Name="Alarms"
+                      Expanded="OnPanelExpanderExpanded"
                       DataContext="{Binding Alarms, Source={StaticResource Locator}}">
                       <Expander.Header>
                         <StackPanel Orientation="Horizontal">
@@ -1268,16 +1313,10 @@
                         </StackPanel>
                       </Expander.Header>
                       <StackPanel>
-                        <TextBlock
-                          Margin="0,0,0,8"
-                          FontSize="11"
-                          Opacity="0.7"
-                          Text="Thresholds are checked while the output is ON. Every alarm is written to the command log and shown as a red marker in History."
-                          TextWrapping="Wrap" />
-                        <ItemsControl ItemsSource="{Binding Rules}">
+                        <ItemsControl ItemsSource="{Binding Rules}" ToolTip="Thresholds are checked while the output is ON. Every alarm is written to the command log and shown as a red marker in History and on the live plots.">
                           <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:AlarmRule}">
-                              <DockPanel Margin="0,2">
+                              <DockPanel Height="28" Margin="0,1">
                                 <TextBlock
                                   Width="14"
                                   Margin="6,0,0,0"
@@ -1286,8 +1325,8 @@
                                   Opacity="0.7"
                                   Text="{Binding Unit}" />
                                 <xceed:DoubleUpDown
-                                  Width="90"
-                                  Height="28"
+                                  Width="86"
+                                  Height="25"
                                   AutomationProperties.Name="{Binding Name}"
                                   DockPanel.Dock="Right"
                                   FormatString="F3"
@@ -1303,10 +1342,10 @@
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <DockPanel Margin="0,8,0,0">
+                        <DockPanel Margin="0,4,0,0">
                           <xceed:IntegerUpDown
                             Width="70"
-                            Height="28"
+                            Height="26"
                             AutomationProperties.Name="Alarm delay"
                             DockPanel.Dock="Right"
                             Maximum="3600"
@@ -1317,78 +1356,41 @@
                             Text="Raise after (s)"
                             ToolTip="A threshold must be exceeded this long before the alarm is raised" />
                         </DockPanel>
-                        <CheckBox
-                          Margin="0,8,0,0"
-                          Content="Alarm on protection trips"
-                          IsChecked="{Binding AlarmOnTrip}" />
-                        <CheckBox
-                          Margin="0,4,0,0"
-                          Content="Alarm when the link is lost"
-                          IsChecked="{Binding AlarmOnLinkLost}" />
-                        <CheckBox
-                          Margin="0,4,0,0"
-                          Content="Play a sound"
-                          IsChecked="{Binding PlaySound}" />
-                        <CheckBox
-                          Margin="0,4,0,0"
-                          Content="Turn the output OFF on a threshold alarm"
-                          IsChecked="{Binding TurnOutputOff}"
-                          ToolTip="Software protection: the output is switched off when a threshold alarm is raised" />
+                        <UniformGrid Margin="0,6,0,0" Columns="2">
+                          <CheckBox
+                            Margin="0,2"
+                            Content="On trips"
+                            IsChecked="{Binding AlarmOnTrip}"
+                            ToolTip="Alarm on protection trips (OVP, OCP, sense, fault)" />
+                          <CheckBox
+                            Margin="0,2"
+                            Content="On link loss"
+                            IsChecked="{Binding AlarmOnLinkLost}"
+                            ToolTip="Alarm when the link to the supply is lost" />
+                          <CheckBox
+                            Margin="0,2"
+                            Content="Play a sound"
+                            IsChecked="{Binding PlaySound}" />
+                          <CheckBox
+                            Margin="0,2"
+                            Content="Output OFF"
+                            IsChecked="{Binding TurnOutputOff}"
+                            ToolTip="Software protection: turn the output OFF when a threshold alarm is raised" />
+                        </UniformGrid>
                       </StackPanel>
                     </Expander>
-                  </StackPanel>
-                </ScrollViewer>
-              </materialDesign:Card>
-            </Grid>
+                </StackPanel>
+              </ScrollViewer>
+            </materialDesign:Card>
           </Grid>
-        </TabItem>
+        </Grid>
 
-        <TabItem AutomationProperties.Name="Sequencer">
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="PlaylistPlay" />
-              <TextBlock VerticalAlignment="Center" Text="Sequencer" />
-            </StackPanel>
-          </TabItem.Header>
-          <View:SequencerView />
-        </TabItem>
-        <TabItem AutomationProperties.Name="History">
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="ChartTimelineVariant" />
-              <TextBlock VerticalAlignment="Center" Text="History" />
-            </StackPanel>
-          </TabItem.Header>
-          <View:HistoryView />
-        </TabItem>
-        <TabItem AutomationProperties.Name="Data Logs">
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="DatabaseSearchOutline" />
-              <TextBlock VerticalAlignment="Center" Text="Data Logs" />
-            </StackPanel>
-          </TabItem.Header>
-          <View:DataRetrievalView />
-        </TabItem>
-        <TabItem AutomationProperties.Name="SCPI Console">
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="Console" />
-              <TextBlock VerticalAlignment="Center" Text="SCPI Console" />
-            </StackPanel>
-          </TabItem.Header>
-          <View:ScpiConsoleView />
-        </TabItem>
-        <TabItem AutomationProperties.Name="App Logs">
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <materialDesign:PackIcon Margin="0,0,6,0" VerticalAlignment="Center" Kind="TextBoxOutline" />
-              <TextBlock VerticalAlignment="Center" Text="App Logs" />
-            </StackPanel>
-          </TabItem.Header>
-          <View:AppLogsView />
-        </TabItem>
-      </TabControl>
+        <View:SequencerView Visibility="{Binding IsChecked, ElementName=SequencerTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+        <View:HistoryView Visibility="{Binding IsChecked, ElementName=HistoryTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+        <View:DataRetrievalView Visibility="{Binding IsChecked, ElementName=DataLogsTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+        <View:ScpiConsoleView Visibility="{Binding IsChecked, ElementName=ConsoleTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+        <View:AppLogsView Visibility="{Binding IsChecked, ElementName=AppLogsTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+      </Grid>
     </DockPanel>
   </materialDesign:DialogHost>
 </Window>

@@ -44,12 +44,25 @@
         Stretch="Uniform"
         StretchDirection="Both">
         <StackPanel Orientation="Horizontal">
-          <TextBlock
-            x:Name="ValueText"
-            FontFamily="Bahnschrift, Segoe UI"
-            FontSize="120"
-            FontWeight="SemiBold"
-            Text="{Binding Value, ElementName=Root}" />
+          <!--
+            Tabular (fixed-width) digits, and the width of SizingText reserved by an invisible copy:
+            the read-out keeps one size whatever the value (12.500 and 0.624 alike).
+          -->
+          <Grid Typography.NumeralAlignment="Tabular">
+            <TextBlock
+              FontFamily="Bahnschrift, Segoe UI"
+              FontSize="120"
+              FontWeight="SemiBold"
+              Text="{Binding SizingText, ElementName=Root}"
+              Visibility="Hidden" />
+            <TextBlock
+              x:Name="ValueText"
+              HorizontalAlignment="Right"
+              FontFamily="Bahnschrift, Segoe UI"
+              FontSize="120"
+              FontWeight="SemiBold"
+              Text="{Binding Value, ElementName=Root}" />
+          </Grid>
           <TextBlock
             Margin="10,0,0,16"
             VerticalAlignment="Bottom"

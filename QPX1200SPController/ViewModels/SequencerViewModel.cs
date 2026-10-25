@@ -12,9 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using QPX1200SPController.Helpers;
 using QPX1200SPController.Models;
 using QPX1200SPController.Services;
-using ConfirmDialog = QPX1200SPController.Views.ConfirmDialog;
 using Settings = QPX1200SPController.Models.Settings;
 
 namespace QPX1200SPController.ViewModels
@@ -241,8 +241,8 @@ namespace QPX1200SPController.ViewModels
             var problems = Validate();
             if (problems.Count > 0)
             {
-                MessageBox.Show(Application.Current.MainWindow, "The sequence cannot start:\n\n" + string.Join("\n", problems),
-                    "Sequencer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                await Dialogs.InfoAsync("The sequence cannot start", "Fix these first:", isError: true,
+                    details: string.Join("\n", problems));
                 return;
             }
 
@@ -257,8 +257,9 @@ namespace QPX1200SPController.ViewModels
             details.Append(OutputOffAtEnd ? "Output is switched OFF at the end or when stopped." : "Output is left as it is at the end.");
             foreach (var warning in Warnings())
                 details.Append("\n" + warning);
-            if (!ConfirmDialog.Ask("Start sequence?", "The sequencer will take control of the voltage and current set-points.",
-                    details.ToString(), "START", MaterialDesignThemes.Wpf.PackIconKind.PlaylistPlay))
+            var answer = await Dialogs.ConfirmAsync("Start sequence?", "The sequencer will take control of the voltage and current set-points.",
+                "START", MaterialDesignThemes.Wpf.PackIconKind.PlaylistPlay, details.ToString(), DialogTone.Go);
+            if (!answer.Confirmed)
                 return;
 
             _cts = new CancellationTokenSource();

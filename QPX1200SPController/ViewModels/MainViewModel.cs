@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using QPX1200SPController.Helpers;
 using QPX1200SPController.Models;
 using QPX1200SPController.Services;
 using ExitChoice = QPX1200SPController.Views.ExitChoice;
-using ConfirmDialog = QPX1200SPController.Views.ConfirmDialog;
 using ExitDialog = QPX1200SPController.Views.ExitDialog;
 using Settings = QPX1200SPController.Models.Settings;
 
@@ -26,7 +26,6 @@ namespace QPX1200SPController.ViewModels
         private readonly Settings _settings = Settings.Current;
         private readonly DispatcherTimer _pollTimer;
         private readonly DispatcherTimer _statusBarTimer;
-        private readonly LiveTelemetryBuffer _telemetryBuffer = new LiveTelemetryBuffer();
 
         private bool _pollInProgress;
         private bool _shutdownInProgress;
@@ -60,6 +59,7 @@ namespace QPX1200SPController.ViewModels
         private bool _isInConfigMode;
         private bool _isControlPanelVisible = true;
         private bool _isFollowingLive = true;
+        private int _lastTripBits;
         private GraphTimeWindowOption _selectedGraphTimeWindow;
         private SampleRateOption _selectedSampleRate;
         private string _lastReadingText = "No readings yet";
@@ -151,7 +151,7 @@ namespace QPX1200SPController.ViewModels
         }
 
         public string ControlPanelToggleText =>
-            IsControlPanelVisible ? "Hide Controls" : "Show Controls";
+            IsControlPanelVisible ? "Hide controls" : "Show controls";
 
         public IReadOnlyList<GraphTimeWindowOption> GraphTimeWindows { get; } = CreateGraphTimeWindows();
 
@@ -161,12 +161,12 @@ namespace QPX1200SPController.ViewModels
         public IReadOnlyList<string> YAxisScaleModes { get; } = new[]
         {
             PlotYAxisSettings.AutoMode,
+            PlotYAxisSettings.SignalMode,
             PlotYAxisSettings.ManualMode
         };
 
         public PlotYAxisSettings VoltageYAxis { get; } = new PlotYAxisSettings(0, 60);
         public PlotYAxisSettings CurrentYAxis { get; } = new PlotYAxisSettings(0, 50);
-        public PlotYAxisSettings PowerYAxis { get; } = new PlotYAxisSettings(0, 1200);
 
         public GraphTimeWindowOption SelectedGraphTimeWindow
         {
@@ -225,33 +225,6 @@ namespace QPX1200SPController.ViewModels
             new StatusFlag("FAULT", StatusFlagKind.Trip, "Fault trip (use TRIP RESET)")
         };
 
-        public string RegulationText
-        {
-            get
-            {
-                var e = Status?.EventStatus;
-                if (!IsConnected || e == null)
-                    return "Mode ---";
-                if (e.ConstantCurrentMode == 1)
-                    return "Mode CC";
-                if (e.UnregulatedMode == 1)
-                    return "Mode UNREG";
-                return e.ConstantVoltageMode == 1 ? "Mode CV" : "Mode ---";
-            }
-        }
-
-        /// <summary>Load resistance seen by the supply (V / I), shown while current flows.</summary>
-        public string LoadText
-        {
-            get
-            {
-                var s = Status;
-                if (!IsConnected || s == null || !s.OutputEnabled || s.Current < 0.005)
-                    return string.Empty;
-                return string.Format(CultureInfo.InvariantCulture, "Load {0:0.###} Ω", s.Voltage / s.Current);
-            }
-        }
-
         public string LastReadingText
         {
             get => _lastReadingText;
@@ -281,8 +254,6 @@ namespace QPX1200SPController.ViewModels
             get => _isTraceOn;
             private set => SetProperty(ref _isTraceOn, value);
         }
-
-        public string VersionText { get; } = "v" + typeof(MainViewModel).Assembly.GetName().Version.ToString(3);
 
         private void RefreshStatusBar()
         {
@@ -375,7 +346,7 @@ namespace QPX1200SPController.ViewModels
 
             if (error != null)
             {
-                ShowError(error);
+                _ = ShowErrorAsync("Limits not saved", error);
                 return;
             }
 
@@ -542,13 +513,13 @@ namespace QPX1200SPController.ViewModels
             _selectedGraphTimeWindow = GraphTimeWindows[2]; // 15 min
             AttachYAxisSettings(VoltageYAxis);
             AttachYAxisSettings(CurrentYAxis);
-            AttachYAxisSettings(PowerYAxis);
 
             ConnectCommand = new RelayCommand(async _ => await Connect(), _ => _powerSupplyService.State == ConnectionState.Disconnected);
             DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => (IsConnected && IsInConfigMode) || IsReconnecting);
             SetVoltageCommand = new RelayCommand(async _ => await SetVoltageAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
             SetCurrentCommand = new RelayCommand(async _ => await SetCurrentAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
-            ToggleOutputCommand = new RelayCommand(async _ => await ToggleOutput(), _ => IsConnected && IsInConfigMode);
+            // Turning the output off is always allowed while connected; turning it on needs the configuration unlocked.
+            ToggleOutputCommand = new RelayCommand(async _ => await ToggleOutput(), _ => IsConnected && (IsInConfigMode || Status?.OutputEnabled == true));
             SetOvpCommand = new RelayCommand(async _ => await SetOvpAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
             SetOcpCommand = new RelayCommand(async _ => await SetOcpAsync(), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
             SendMiscCommand = new RelayCommand(async p => await SendMiscCommandAsync(p as string), _ => IsConnected && IsInConfigMode && !IsSequenceRunning);
@@ -571,6 +542,7 @@ namespace QPX1200SPController.ViewModels
             RefreshStatusBar();
 
             _powerSupplyService.ConnectionStateChanged += OnConnectionStateChanged;
+            _powerSupplyService.ActivityRecorded += OnActivityRecorded;
         }
 
         public ICommand ToggleThemeCommand { get; }
@@ -580,12 +552,85 @@ namespace QPX1200SPController.ViewModels
             settings.PropertyChanged += (_, __) => GraphYAxisChanged?.Invoke();
         }
 
-        public TelemetrySample[] GetGraphSamples()
+        /// <summary>This session's live samples (in segments) and events, drawn by the live plots.</summary>
+        public LivePlotBuffer LiveBuffer { get; } = new LivePlotBuffer();
+
+        /// <summary>Time span shown while following live data ("Maximum" = everything kept).</summary>
+        public TimeSpan GraphWindow
         {
-            DateTime? from = null;
-            if (SelectedGraphTimeWindow?.Duration != null)
-                from = DateTime.Now - SelectedGraphTimeWindow.Duration.Value;
-            return _telemetryBuffer.GetSamplesSince(from);
+            get
+            {
+                if (SelectedGraphTimeWindow?.Duration != null)
+                    return SelectedGraphTimeWindow.Duration.Value;
+                var oldest = LiveBuffer.Oldest;
+                var newest = LiveBuffer.Newest;
+                var span = oldest.HasValue && newest.HasValue ? newest.Value - oldest.Value : TimeSpan.Zero;
+                return span < TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : span;
+            }
+        }
+
+        /// <summary>Vertical markers for this session's commands, trips, alarms and connection events (settings.xml).</summary>
+        public bool ShowLiveMarkers
+        {
+            get => _settings.ShowLiveMarkers;
+            set
+            {
+                if (_settings.ShowLiveMarkers == value)
+                    return;
+                _settings.ShowLiveMarkers = value;
+                _settings.Save();
+                RaisePropertyChanged();
+                GraphDataUpdated?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// A gap longer than this between two samples starts a new line segment (no line is drawn
+        /// across missing data): 3 poll intervals, at least 3 s.
+        /// </summary>
+        private TimeSpan MaxSampleGap
+        {
+            get
+            {
+                var interval = SelectedSampleRate?.Interval ?? TimeSpan.FromSeconds(1);
+                var gap = TimeSpan.FromTicks(interval.Ticks * 3);
+                return gap < TimeSpan.FromSeconds(3) ? TimeSpan.FromSeconds(3) : gap;
+            }
+        }
+
+        private void AddLiveEvent(LiveEvent liveEvent)
+        {
+            if (liveEvent == null)
+                return;
+            LiveBuffer.AddEvent(liveEvent);
+            GraphDataUpdated?.Invoke();
+        }
+
+        /// <summary>Shows a record that does not come from the supply service (alarms) as a live-plot marker.</summary>
+        public void ShowOnLivePlots(ActivityRecord record)
+        {
+            AddLiveEvent(LiveEvent.FromRecord(record));
+        }
+
+        /// <summary>Adds a solid red marker for each protection trip that is newly latched.</summary>
+        private void DetectNewTrips(PowerSupplyStatus status)
+        {
+            var e = status.EventStatus;
+            int bits = e == null ? 0
+                : (e.OverVoltageTrip == 1 ? 1 : 0) | (e.OverCurrentTrip == 1 ? 2 : 0)
+                  | (e.OutputSenseTrip == 1 ? 4 : 0) | (e.FaultTrip == 1 ? 8 : 0);
+            int newBits = bits & ~_lastTripBits;
+            _lastTripBits = bits;
+            if (newBits == 0)
+                return;
+
+            var names = new List<string>();
+            if ((newBits & 1) != 0) names.Add("OVP");
+            if ((newBits & 2) != 0) names.Add("OCP");
+            if ((newBits & 4) != 0) names.Add("Sense");
+            if ((newBits & 8) != 0) names.Add("Fault");
+            AddLiveEvent(new LiveEvent(status.Timestamp, LiveEvent.KindTrip, "Trip",
+                string.Join(" + ", names) + " trip - output OFF until TRIP RESET"));
         }
 
         private static IReadOnlyList<GraphTimeWindowOption> CreateGraphTimeWindows()
@@ -695,6 +740,7 @@ namespace QPX1200SPController.ViewModels
 
                 case ConnectionState.Reconnecting:
                     _pollTimer.Stop();
+                    LiveBuffer.Break();
                     // Drop out of configuration mode so nothing is changed by accident when the link returns.
                     IsInConfigMode = false;
                     ConnectionStatus = _powerSupplyService.ReconnectAttempt == 0
@@ -704,6 +750,8 @@ namespace QPX1200SPController.ViewModels
 
                 case ConnectionState.Disconnected:
                     _pollTimer.Stop();
+                    LiveBuffer.Break();
+                    _lastTripBits = 0;
                     ConnectionStatus = _lastConnectError ?? "Disconnected";
                     Status = new PowerSupplyStatus
                     {
@@ -719,8 +767,6 @@ namespace QPX1200SPController.ViewModels
                     break;
             }
 
-            RaisePropertyChanged(nameof(RegulationText));
-            RaisePropertyChanged(nameof(LoadText));
             CommandManager.InvalidateRequerySuggested();
         }
 
@@ -789,13 +835,12 @@ namespace QPX1200SPController.ViewModels
                            e.OverVoltageTrip, e.OverCurrentTrip, e.OutputSenseTrip, e.FaultTrip };
             for (int k = 0; k < StatusFlags.Count; k++)
                 StatusFlags[k].IsActive = bits[k] == 1;
-            RaisePropertyChanged(nameof(RegulationText));
-            RaisePropertyChanged(nameof(LoadText));
             LastReadingText = "Last reading " + status.Timestamp.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
             AccumulateCounters(status);
 
             _databaseService.EnqueueSample(status);
-            _telemetryBuffer.Add(status.Timestamp, status.Voltage, status.Current, status.Power);
+            DetectNewTrips(status);
+            LiveBuffer.Add(status.Timestamp, status.Voltage, status.Current, MaxSampleGap);
             GraphDataUpdated?.Invoke();
         }
 
@@ -909,152 +954,103 @@ namespace QPX1200SPController.ViewModels
         {
             if (!IsVoltageValid)
             {
-                ShowError($"Voltage must be between {MinVoltageToSet:F3} V and {MaxVoltageToSet:F3} V.");
+                await ShowErrorAsync("Voltage out of range", $"Voltage must be between {MinVoltageToSet:F3} V and {MaxVoltageToSet:F3} V.");
                 return;
             }
 
             var record = await _powerSupplyService.SetVoltageAsync(VoltageToSet, CommandSource);
-            if (!record.Success)
-            {
-                ShowError("The voltage command could not be sent. See App Logs for details.");
-                return;
-            }
-            await RefreshSettingsAndVerifyAsync(record, "Voltage", s => s.SetVoltage, "V");
+            ApplySetpointReadback(record, "Voltage", "V", "F3", (s, v) => s.SetVoltage = v);
         }
 
         private async Task SetCurrentAsync()
         {
             if (!IsCurrentValid)
             {
-                ShowError($"Current must be between {MinCurrentToSet:F3} A and {MaxCurrentToSet:F3} A.");
+                await ShowErrorAsync("Current out of range", $"Current must be between {MinCurrentToSet:F2} A and {MaxCurrentToSet:F2} A.");
                 return;
             }
 
             var record = await _powerSupplyService.SetCurrentAsync(CurrentToSet, CommandSource);
-            if (!record.Success)
-            {
-                ShowError("The current command could not be sent. See App Logs for details.");
-                return;
-            }
-            await RefreshSettingsAndVerifyAsync(record, "Current", s => s.SetCurrent, "A");
+            ApplySetpointReadback(record, "Current", "A", "F2", (s, v) => s.SetCurrent = v);
         }
 
         private async Task SetOvpAsync()
         {
             if (!IsOvpValid)
             {
-                ShowError($"OVP must be between {MinOvpToSet:F3} V and {MaxOvpToSet:F3} V.");
+                await ShowErrorAsync("OVP out of range", $"OVP must be between {MinOvpToSet:F1} V and {MaxOvpToSet:F1} V.");
                 return;
             }
 
             var record = await _powerSupplyService.SetOverVoltageProtectionAsync(OvpToSet, CommandSource);
-            if (!record.Success)
-            {
-                ShowError("The OVP command could not be sent. See App Logs for details.");
-                return;
-            }
-            await RefreshSettingsAndVerifyAsync(record, "OVP", s => s.SetOvpLevel, "V");
+            ApplySetpointReadback(record, "OVP", "V", "F1", (s, v) => s.SetOvpLevel = v);
         }
 
         private async Task SetOcpAsync()
         {
             if (!IsOcpValid)
             {
-                ShowError($"OCP must be between {MinOcpToSet:F3} A and {MaxOcpToSet:F3} A.");
+                await ShowErrorAsync("OCP out of range", $"OCP must be between {MinOcpToSet:F1} A and {MaxOcpToSet:F1} A.");
                 return;
             }
 
             var record = await _powerSupplyService.SetOverCurrentProtectionAsync(OcpToSet, CommandSource);
-            if (!record.Success)
-            {
-                ShowError("The OCP command could not be sent. See App Logs for details.");
-                return;
-            }
-            await RefreshSettingsAndVerifyAsync(record, "OCP", s => s.SetOcpLevel, "A");
+            ApplySetpointReadback(record, "OCP", "A", "F1", (s, v) => s.SetOcpLevel = v);
         }
 
         /// <summary>
-        /// Reads the set-points back, records the read-back on the command's log row and
-        /// logs a warning if the supply did not take the requested value.
+        /// Shows the read-back that came with the command (same exchange as the command and its
+        /// EER? check) in the meters' set-point footers. The result itself is on the last-command line.
         /// </summary>
-        private async Task RefreshSettingsAndVerifyAsync(ActivityRecord record, string name,
-            Func<PowerSupplySettingStatus, double> selector, string unit)
+        private void ApplySetpointReadback(ActivityRecord record, string name, string unit, string format,
+            Action<PowerSupplySettingStatus, double> apply)
         {
-            double expected = record.Requested ?? 0;
-            var settings = await _powerSupplyService.GetPowerSupplySettingsAsync();
-            if (settings == null)
+            if (record.Readback.HasValue && PowerSupplySettingStatus != null)
             {
-                record.Complete(detail: "read-back failed");
-                LoggingService.Instance.LogWarning($"{name} sent ({expected:F3} {unit}) but the read-back failed.",
-                    nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
-                return;
+                var s = PowerSupplySettingStatus;
+                var copy = new PowerSupplySettingStatus
+                {
+                    SetVoltage = s.SetVoltage,
+                    SetCurrent = s.SetCurrent,
+                    SetOvpLevel = s.SetOvpLevel,
+                    SetOcpLevel = s.SetOcpLevel
+                };
+                apply(copy, record.Readback.Value);
+                PowerSupplySettingStatus = copy;
             }
 
-            PowerSupplySettingStatus = settings;
-            double actual = selector(settings);
-            double tolerance = Math.Max(0.011, Math.Abs(expected) * 0.001);
-            if (Math.Abs(actual - expected) > tolerance)
-            {
-                string message = $"{name} read-back mismatch: requested {expected:F3} {unit}, supply reports {actual:F3} {unit}.";
-                record.Complete(ActivityRecord.ResultMismatch, actual, message);
-                LoggingService.Instance.LogWarning(message, nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
-            }
-            else
-            {
-                record.Complete(ActivityRecord.ResultOk, actual);
-                LoggingService.Instance.LogInfo($"{name} set to {actual:F3} {unit}.",
-                    nameof(MainViewModel), nameof(RefreshSettingsAndVerifyAsync));
-            }
+            if (record.Result == ActivityRecord.ResultOk && record.Readback.HasValue)
+                LoggingService.Instance.LogInfo($"{name} set to {record.Readback.Value.ToString(format, CultureInfo.InvariantCulture)} {unit}.",
+                    nameof(MainViewModel), nameof(ApplySetpointReadback));
         }
 
         private async Task ToggleOutput()
         {
             bool enable = !Status.OutputEnabled;
-            if (enable && !ConfirmOutputOnIfRequired())
+            // Turning on needs the configuration unlocked; turning off is always allowed while connected.
+            if (enable && !IsInConfigMode)
+                return;
+            if (enable && !await ConfirmOutputOnIfRequiredAsync())
                 return;
 
             var record = await _powerSupplyService.SetOutputAsync(enable, CommandSource);
-            if (!record.Success)
-            {
-                ShowError("The output command could not be sent. See App Logs for details.");
-                return;
-            }
+            if (record.Result == ActivityRecord.ResultOk)
+                LoggingService.Instance.LogInfo($"Output switched {(enable ? "ON" : "OFF")}.", nameof(MainViewModel), nameof(ToggleOutput));
 
-            await VerifyOutputAsync(record, enable);
+            await RefreshStatusAsync();
             IsInConfigMode = false;
         }
 
-        /// <summary>Reads the output state back onto the command's log row. Returns true if it matches.</summary>
-        private async Task<bool> VerifyOutputAsync(ActivityRecord record, bool expectedOn)
+        /// <summary>Reads the live values at once (after a command) instead of waiting for the next poll.</summary>
+        private async Task RefreshStatusAsync()
         {
             var status = await _powerSupplyService.GetStatusAsync(skipIfBusy: false);
-            if (status == null)
-            {
-                record.Complete(detail: "read-back failed");
-                LoggingService.Instance.LogWarning($"Output {(expectedOn ? "ON" : "OFF")} sent but the read-back failed.",
-                    nameof(MainViewModel), nameof(VerifyOutputAsync));
-                return false;
-            }
-
-            ApplyStatus(status);
-            bool matches = status.OutputEnabled == expectedOn;
-            if (matches)
-            {
-                record.Complete(ActivityRecord.ResultOk, status.OutputEnabled ? 1 : 0);
-                LoggingService.Instance.LogInfo($"Output switched {(expectedOn ? "ON" : "OFF")}.", nameof(MainViewModel), nameof(VerifyOutputAsync));
-            }
-            else
-            {
-                string message = $"Output {(expectedOn ? "ON" : "OFF")} requested but the supply reports {(status.OutputEnabled ? "ON" : "OFF")}" +
-                                 (expectedOn && HasTrip(status.EventStatus) ? " (trip active - use TRIP Reset)." : ".");
-                record.Complete(ActivityRecord.ResultMismatch, status.OutputEnabled ? 1 : 0, message);
-                LoggingService.Instance.LogWarning(message, nameof(MainViewModel), nameof(VerifyOutputAsync));
-            }
-            return matches;
+            if (status != null)
+                ApplyStatus(status);
         }
 
         /// <summary>Asks before switching the output on (unless switched off in the settings). True = go ahead.</summary>
-        private bool ConfirmOutputOnIfRequired()
+        private async Task<bool> ConfirmOutputOnIfRequiredAsync()
         {
             if (!_settings.ConfirmOutputOn)
                 return true;
@@ -1063,17 +1059,17 @@ namespace QPX1200SPController.ViewModels
             string details = s == null
                 ? "Set-points not read yet."
                 : string.Format(CultureInfo.InvariantCulture,
-                    "Voltage  {0,9:F3} V\nCurrent  {1,9:F3} A\nOVP      {2,9:F3} V\nOCP      {3,9:F3} A",
+                    "Voltage  {0,9:F3} V\nCurrent  {1,9:F2} A\nOVP      {2,9:F1} V\nOCP      {3,9:F1} A",
                     s.SetVoltage, s.SetCurrent, s.SetOvpLevel, s.SetOcpLevel);
             string message = "The output will be switched on with the supply's present settings.";
             if (HasTrip(Status?.EventStatus))
                 message += " A protection trip is latched - use TRIP RESET first or the output may not switch on.";
 
-            bool ok = ConfirmDialog.Ask("Turn output ON?", message, details, "TURN ON",
-                MaterialDesignThemes.Wpf.PackIconKind.Power, offerDontAsk: true, out bool dontAskAgain);
-            if (ok && dontAskAgain)
+            var answer = await Dialogs.ConfirmAsync("Turn output ON?", message, "TURN ON",
+                MaterialDesignThemes.Wpf.PackIconKind.Power, details, DialogTone.Go, offerDontAsk: true);
+            if (answer.Confirmed && answer.DontAskAgain)
                 ConfirmOutputOn = false;
-            return ok;
+            return answer.Confirmed;
         }
 
         /// <summary>Ask for confirmation before the output is switched on (settings.xml).</summary>
@@ -1101,16 +1097,70 @@ namespace QPX1200SPController.ViewModels
                 return;
 
             var record = await _powerSupplyService.SendConfigCommandAsync(command, CommandSource);
-            record.Complete();
-            if (!record.Success)
-                ShowError($"'{command}' could not be sent. See App Logs for details.");
-            else
+            if (record.Result == ActivityRecord.ResultOk)
                 LoggingService.Instance.LogInfo($"Sent '{command}'.", nameof(MainViewModel), nameof(SendMiscCommandAsync));
         }
 
-        private static void ShowError(string message)
+        private static Task ShowErrorAsync(string title, string message)
         {
-            Xceed.Wpf.Toolkit.MessageBox.Show(Application.Current.MainWindow, message, "Error", MessageBoxButton.OK);
+            return Dialogs.InfoAsync(title, message, isError: true);
+        }
+
+        #endregion
+
+        #region Last command
+
+        private string _lastCommandText;
+        private bool _lastCommandFailed;
+
+        /// <summary>The last configuration command sent to the supply (from any part of the app) and its result.</summary>
+        public string LastCommandText
+        {
+            get => _lastCommandText;
+            private set => SetProperty(ref _lastCommandText, value);
+        }
+
+        /// <summary>The last command was not OK (Mismatch or Failed): the line is shown in red.</summary>
+        public bool LastCommandFailed
+        {
+            get => _lastCommandFailed;
+            private set => SetProperty(ref _lastCommandFailed, value);
+        }
+
+        private void OnActivityRecorded(ActivityRecord record)
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted)
+                return;
+            if (!dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(new Action(() => OnActivityRecorded(record)));
+                return;
+            }
+
+            if (record.Kind == ActivityRecord.KindCommand)
+            {
+                string note = record.Source != CommandSource ? record.Source : null;
+                if (record.Result == ActivityRecord.ResultMismatch && record.Requested == 1
+                    && record.Command.StartsWith("OP1", StringComparison.OrdinalIgnoreCase) && HasTrip(Status?.EventStatus))
+                    note = (note == null ? "" : note + ", ") + "trip active - use TRIP RESET";
+                ShowResult(record, note);
+            }
+
+            AddLiveEvent(LiveEvent.FromRecord(record));
+        }
+
+        /// <summary>Shows a command's result on the "last command" line.</summary>
+        private void ShowResult(ActivityRecord record, string note)
+        {
+            string mark = record.Result == ActivityRecord.ResultOk ? "✓" : record.Result == ActivityRecord.ResultMismatch ? "⚠" : "✗";
+            string text = $"{record.Timestamp.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}  {record.Command}  {mark} {record.Result}";
+            if (!string.IsNullOrEmpty(record.Detail))
+                text += ": " + record.Detail;
+            if (!string.IsNullOrEmpty(note))
+                text += "  · " + note;
+            LastCommandText = text;
+            LastCommandFailed = record.Result != ActivityRecord.ResultOk;
         }
 
         #endregion
@@ -1146,8 +1196,9 @@ namespace QPX1200SPController.ViewModels
 
                     if (choice == ExitChoice.TurnOutputOffAndExit)
                     {
+                        // OK = accepted (EER? 0) and OP1? read back 0 in the same exchange.
                         var record = await _powerSupplyService.SetOutputAsync(false, "Exit");
-                        bool confirmedOff = record.Success && await VerifyOutputAsync(record, expectedOn: false);
+                        bool confirmedOff = record.Result == ActivityRecord.ResultOk;
 
                         if (confirmedOff)
                         {
@@ -1156,10 +1207,11 @@ namespace QPX1200SPController.ViewModels
                         else
                         {
                             LoggingService.Instance.LogError("Could not confirm the output is OFF on exit.", nameof(MainViewModel), nameof(PrepareShutdownAsync));
-                            var answer = MessageBox.Show(owner,
-                                "The power supply did not confirm that the output is OFF.\n\nExit anyway?",
-                                "Output state unknown", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                            if (answer != MessageBoxResult.Yes)
+                            var answer = await Dialogs.ConfirmAsync("Output state unknown",
+                                "The power supply did not confirm that the output is OFF" +
+                                (string.IsNullOrEmpty(record.Detail) ? "." : $" ({record.Detail}).") + " Exit anyway?",
+                                "EXIT ANYWAY", MaterialDesignThemes.Wpf.PackIconKind.AlertOutline, tone: DialogTone.Danger);
+                            if (!answer.Confirmed)
                             {
                                 if (IsConnected)
                                     _pollTimer.Start();

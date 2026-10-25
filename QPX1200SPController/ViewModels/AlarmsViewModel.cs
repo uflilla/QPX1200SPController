@@ -268,6 +268,7 @@ namespace QPX1200SPController.ViewModels
                 Detail = detail
             };
             _database.EnqueueActivity(record);
+            _main.ShowOnLivePlots(record);
         }
 
         private void RaiseBannerChanged()

@@ -139,6 +139,30 @@ namespace QPX1200SPSimulator
                     }
                     break;
 
+                case "readonly":
+                    _supply.ReadOnly = arg != "off";
+                    Write(_supply.ReadOnly
+                        ? "Read only: set commands are refused with error 200 (EER?), as when another interface has the lock."
+                        : "Read only off.", ConsoleColor.White);
+                    break;
+
+                case "vcap":
+                    if (arg == "off")
+                    {
+                        _supply.VoltageCap = null;
+                        Write("Voltage cap off.", ConsoleColor.White);
+                    }
+                    else if (arg != null && double.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out double cap) && cap >= 0)
+                    {
+                        _supply.VoltageCap = cap;
+                        Write($"V1 above {cap.ToString("F3", CultureInfo.InvariantCulture)} V is silently capped (the app should show Mismatch).", ConsoleColor.White);
+                    }
+                    else
+                    {
+                        Write("Usage: vcap <volts> | vcap off", ConsoleColor.Red);
+                    }
+                    break;
+
                 case "mute":
                     _server.Mute = arg != "off";
                     Write(_server.Mute
@@ -251,6 +275,8 @@ namespace QPX1200SPSimulator
                 Console.WriteLine("  status | s             show set-points, measurements, trips and fault switches");
                 Console.WriteLine("  load <ohms> | open     change the resistive load (e.g. load 0.5 forces CC mode)");
                 Console.WriteLine("  trip ovp|ocp|sense|fault   force a trip (output goes OFF until TRIPRST)");
+                Console.WriteLine("  readonly [off]         refuse set commands with error 200 (EER?), like another interface holding the lock");
+                Console.WriteLine("  vcap <volts>|off       silently cap V1 so the read-back differs (app shows Mismatch)");
                 Console.WriteLine("  mute [off]             stop answering queries (app should time out and reconnect)");
                 Console.WriteLine("  delay <ms>             delay every response (> 3000 ms makes the app time out)");
                 Console.WriteLine("  garble [n]             corrupt the next n responses (3 in a row => app reconnects)");

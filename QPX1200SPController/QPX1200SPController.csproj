@@ -127,13 +127,6 @@
     <Compile Include="ViewModels\AlarmsViewModel.cs" />
     <Compile Include="ViewModels\ScpiConsoleViewModel.cs" />
     <Compile Include="ViewModels\SequencerViewModel.cs" />
-    <Compile Include="Views\ConfirmDialog.xaml.cs">
-      <DependentUpon>ConfirmDialog.xaml</DependentUpon>
-    </Compile>
-    <Page Include="Views\ConfirmDialog.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
     <Compile Include="Views\ScpiConsoleView.xaml.cs">
       <DependentUpon>ScpiConsoleView.xaml</DependentUpon>
     </Compile>
@@ -206,7 +199,9 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Compile Include="Models\LiveTelemetryBuffer.cs" />
+    <Compile Include="Models\LivePlotBuffer.cs" />
+    <Compile Include="Helpers\Dialogs.cs" />
+    <Compile Include="Helpers\PlotHover.cs" />
     <Compile Include="Helpers\LivePlotPresenter.cs" />
   </ItemGroup>
   <ItemGroup>

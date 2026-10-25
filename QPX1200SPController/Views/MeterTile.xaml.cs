@@ -19,6 +19,7 @@ namespace QPX1200SPController.Views
         public static readonly DependencyProperty FooterLeftProperty = Register(nameof(FooterLeft), typeof(string), null);
         public static readonly DependencyProperty FooterRightProperty = Register(nameof(FooterRight), typeof(string), null);
         public static readonly DependencyProperty IsLiveProperty = Register(nameof(IsLive), typeof(bool), false);
+        public static readonly DependencyProperty SizingTextProperty = Register(nameof(SizingText), typeof(string), "88.888");
 
         public MeterTile()
         {
@@ -33,6 +34,9 @@ namespace QPX1200SPController.Views
         public SolidColorBrush Accent { get => (SolidColorBrush)GetValue(AccentProperty); set => SetValue(AccentProperty, value); }
         public string FooterLeft { get => (string)GetValue(FooterLeftProperty); set => SetValue(FooterLeftProperty, value); }
         public string FooterRight { get => (string)GetValue(FooterRightProperty); set => SetValue(FooterRightProperty, value); }
+
+        /// <summary>The widest value expected (default "88.888"): the read-out is sized for it so it never changes size.</summary>
+        public string SizingText { get => (string)GetValue(SizingTextProperty); set => SetValue(SizingTextProperty, value); }
 
         /// <summary>True while the output is on: the value is drawn in the accent colour, otherwise muted.</summary>
         public bool IsLive { get => (bool)GetValue(IsLiveProperty); set => SetValue(IsLiveProperty, value); }

@@ -26,7 +26,10 @@ Note that test data is logged to the app's `powerlog.db` like real data.
 
 - Set-points `V1`, `I1`, `OVP1`, `OCP1`, output `OP1`, and their queries in the real reply formats
   (`12.000V`, `V1 12.000`, `VP1 61.000`, ...). `*IDN?`, `TRIPRST`, `LOCAL`, `*RST`, `*CLS`.
-- Status/error queries for the SCPI console: `EER?`, `QER?`, `*ESR?`, `*STB?`, `LSE1?` (always `0`), `*OPC?` (`1`).
+- `EER?` (Execution Error Register, cleared on read): a value outside the manual's range (V 0–60, I 0–50,
+  OVP 2–65, OCP 2–55, OP1 0/1) is refused with error 100, and with `readonly` every set command gets error 200.
+  Values are rounded to the setting resolution (1 mV, 10 mA, 0.1 V OVP, 0.1 A OCP), like the real supply.
+- Other status queries for the SCPI console: `QER?`, `*ESR?`, `*STB?`, `LSE1?` (always `0`), `*OPC?` (`1`).
 - A resistive load: CV/CC cross-over, the 1200 W power envelope (unregulated outside it),
   ±1 mV / ±1 mA measurement noise.
 - OVP/OCP trips against the programmed levels: the output switches OFF and `OP1 1` is refused
@@ -42,6 +45,8 @@ Note that test data is logged to the app's `powerlog.db` like real data.
 | `status` / `s` | Show set-points, measurements, trips and fault switches |
 | `load <ohms>` / `load open` | Change the load (e.g. `load 0.5` forces CC mode) |
 | `trip ovp\|ocp\|sense\|fault` | Force a trip |
+| `readonly` / `readonly off` | Refuse set commands with error 200, as when another interface has the lock |
+| `vcap <volts>` / `vcap off` | Silently cap V1 so the read-back differs from the request |
 | `mute` / `mute off` | Receive commands but never answer |
 | `delay <ms>` | Delay every reply |
 | `garble [n]` | Corrupt the next n replies |
@@ -58,6 +63,8 @@ Note that test data is logged to the app's `powerlog.db` like real data.
 |---|---|
 | `load 2` with V = 12 V, I = 1 A, output ON | Meters show ~2 V / 1 A, CC indicator lit |
 | In the app set V above OVP (or `trip ovp`) | Output goes OFF, OVP indicator stays lit until **TRIP Reset** |
+| `readonly`, then SET a voltage | Last-command line in red: `✗ Failed: error 200: no write access ...` |
+| `vcap 5`, then SET 12 V | Last-command line in red: `⚠ Mismatch: read back 5, expected 12` |
 | `garble 1` | One warning in App Logs, link stays up, no zero values in plots |
 | `garble 3` | App reconnects automatically |
 | `delay 4000` | Status reads time out, header turns amber "Reconnecting…"; `delay 0` → reconnects |

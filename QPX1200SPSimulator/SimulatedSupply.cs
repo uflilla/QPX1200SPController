@@ -36,6 +36,9 @@ namespace QPX1200SPSimulator
         private int _tripBits;          // latched until TRIPRST
         private int _pendingTripBits;   // reported once by LSR1? (register clears on read)
         private bool _noise = true;
+        private int _executionError;    // EER?: last error, cleared on read (manual: Error Reporting)
+        private bool _readOnly;         // set commands refused with error 200 (another interface has the lock)
+        private double? _voltageCap;    // V1 silently capped: the read-back differs (app shows Mismatch)
 
         public string Identity { get; set; } = "THURLBY THANDAR, QPX1200SP, SIM0001, 1.00-SIM";
 
@@ -52,6 +55,20 @@ namespace QPX1200SPSimulator
         {
             get { lock (_sync) return _noise; }
             set { lock (_sync) _noise = value; }
+        }
+
+        /// <summary>Set commands are refused with error 200, as when another interface holds the lock.</summary>
+        public bool ReadOnly
+        {
+            get { lock (_sync) return _readOnly; }
+            set { lock (_sync) _readOnly = value; }
+        }
+
+        /// <summary>V1 values above this are silently capped (null = off), so the read-back differs.</summary>
+        public double? VoltageCap
+        {
+            get { lock (_sync) return _voltageCap; }
+            set { lock (_sync) _voltageCap = value; }
         }
 
         /// <summary>Forces a trip as if the instrument had detected it.</summary>
@@ -84,8 +101,11 @@ namespace QPX1200SPSimulator
                     case "V1O?": return F3(MeasureUnlocked().Voltage) + "V";
                     case "I1O?": return F3(MeasureUnlocked().Current) + "A";
                     case "LSR1?": return ReadLsrUnlocked().ToString(Inv);
-                    // Status/error registers (always clear in the simulator).
                     case "EER?":
+                        int error = _executionError;
+                        _executionError = 0;
+                        return error.ToString(Inv);
+                    // Other status registers (always clear in the simulator).
                     case "QER?":
                     case "*ESR?":
                     case "*STB?":
@@ -94,6 +114,8 @@ namespace QPX1200SPSimulator
                     case "*CLS":
                         return null;
                     case "TRIPRST":
+                        if (RefuseIfReadOnly(c))
+                            return null;
                         _tripBits = 0;
                         RaiseNotice("Trips cleared (TRIPRST).");
                         return null;
@@ -108,26 +130,50 @@ namespace QPX1200SPSimulator
                 string[] parts = upper.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 2 && double.TryParse(parts[1].Trim(), NumberStyles.Float, Inv, out double value))
                 {
+                    // Ranges and setting resolutions from the manual's specification; a value outside
+                    // the range is refused with execution error 100 and the setting is left as it was.
                     switch (parts[0])
                     {
                         case "V1":
-                            _setVoltage = Clamp(value, 0, MaxVoltage);
+                            if (RefuseIfReadOnly(c) || RefuseIfOutOfRange(c, value, 0, MaxVoltage))
+                                return null;
+                            value = Round(value, 0.001);
+                            if (_voltageCap.HasValue && value > _voltageCap.Value)
+                            {
+                                RaiseNotice($"'{c}' capped to {F3(_voltageCap.Value)} V (vcap).");
+                                value = _voltageCap.Value;
+                            }
+                            _setVoltage = value;
                             EvaluateProtectionUnlocked();
                             return null;
                         case "I1":
-                            _setCurrent = Clamp(value, 0, MaxCurrent);
+                            if (RefuseIfReadOnly(c) || RefuseIfOutOfRange(c, value, 0, MaxCurrent))
+                                return null;
+                            _setCurrent = Round(value, 0.01);
                             EvaluateProtectionUnlocked();
                             return null;
                         case "OVP1":
-                            _ovp = Clamp(value, 1, 66);
+                            if (RefuseIfReadOnly(c) || RefuseIfOutOfRange(c, value, 2, 65))
+                                return null;
+                            _ovp = Round(value, 0.1);
                             EvaluateProtectionUnlocked();
                             return null;
                         case "OCP1":
-                            _ocp = Clamp(value, 1, 55);
+                            if (RefuseIfReadOnly(c) || RefuseIfOutOfRange(c, value, 2, 55))
+                                return null;
+                            _ocp = Round(value, 0.1);
                             EvaluateProtectionUnlocked();
                             return null;
                         case "OP1":
-                            SetOutputUnlocked(value >= 0.5);
+                            if (RefuseIfReadOnly(c))
+                                return null;
+                            if (value != 0 && value != 1)
+                            {
+                                _executionError = 100;
+                                RaiseNotice($"'{c}' refused: error 100 (only 0 and 1 allowed).");
+                                return null;
+                            }
+                            SetOutputUnlocked(value == 1);
                             return null;
                     }
                 }
@@ -154,6 +200,26 @@ namespace QPX1200SPSimulator
                        $"Measured {F3(m.Voltage)} V  {F3(m.Current)} A  {m.Voltage * m.Current:F2} W  trips: {DescribeTrips(_tripBits)}";
             }
         }
+
+        private bool RefuseIfReadOnly(string command)
+        {
+            if (!_readOnly)
+                return false;
+            _executionError = 200;
+            RaiseNotice($"'{command}' refused: error 200 (read only).");
+            return true;
+        }
+
+        private bool RefuseIfOutOfRange(string command, double value, double min, double max)
+        {
+            if (value >= min && value <= max)
+                return false;
+            _executionError = 100;
+            RaiseNotice($"'{command}' refused: error 100 (range {min.ToString(Inv)} to {max.ToString(Inv)}).");
+            return true;
+        }
+
+        private static double Round(double value, double step) => Math.Round(Math.Round(value / step) * step, 6);
 
         private void SetOutputUnlocked(bool on)
         {

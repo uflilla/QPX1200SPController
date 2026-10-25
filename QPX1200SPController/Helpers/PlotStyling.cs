@@ -40,10 +40,13 @@ namespace QPX1200SPController.Helpers
         {
             var inv = CultureInfo.InvariantCulture;
             bool midnight = time.TimeOfDay == TimeSpan.Zero;
-            if (spanDays <= 15.0 / 1440)
+            // Up to about half an hour (the live plots add a margin to their window) ticks are
+            // seconds apart; further out a tick that is not on a whole minute still shows its
+            // seconds so two labels never read the same.
+            if (spanDays <= 35.0 / 1440 || time.Millisecond != 0)
                 return time.ToString(time.Millisecond == 0 ? "HH:mm:ss" : "HH:mm:ss.f", inv);
             if (spanDays <= 1.5)
-                return time.ToString(midnight ? "MM-dd" : "HH:mm", inv);
+                return time.ToString(midnight ? "MM-dd" : time.Second != 0 ? "HH:mm:ss" : "HH:mm", inv);
             if (spanDays <= 10)
                 return time.ToString(midnight ? "MM-dd" : "MM-dd HH:mm", inv);
             return time.ToString("yyyy-MM-dd", inv);

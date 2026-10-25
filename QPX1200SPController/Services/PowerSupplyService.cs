@@ -341,10 +341,43 @@ namespace QPX1200SPController.Services
         }
 
         /// <summary>
-        /// Sends a configuration (non-query) command and raises its log record. The caller may
-        /// add a read-back with <see cref="ActivityRecord.Complete"/>; otherwise it is written as is.
+        /// Sends a configuration (non-query) command checked with <c>EER?</c> and raises its log
+        /// record. LOCAL is sent on its own and not checked (see <see cref="GoLocalAsync"/>).
         /// </summary>
-        public async Task<ActivityRecord> SendConfigCommandAsync(string command, string source, double? requested = null)
+        public Task<ActivityRecord> SendConfigCommandAsync(string command, string source)
+        {
+            command = command?.Trim() ?? string.Empty;
+            if (IsLocalCommand(command))
+                return SendUnverifiedAsync(command, source);
+            return SendVerifiedAsync(command, source, null, null, null, 0);
+        }
+
+        /// <summary>
+        /// Sends a command without checking it and records the result. Used for LOCAL, which must be
+        /// the last thing sent: any further character puts the supply back into Remote (manual p.20).
+        /// </summary>
+        private async Task<ActivityRecord> SendUnverifiedAsync(string command, string source)
+        {
+            command = command?.Trim() ?? string.Empty;
+            var record = new ActivityRecord(ActivityRecord.KindCommand, command) { Source = source };
+
+            var outcome = await ExecuteAsync(command, skipIfBusy: false);
+            record.DurationMs = outcome.DurationMs;
+            record.Complete(outcome.Succeeded ? ActivityRecord.ResultOk : ActivityRecord.ResultFailed, detail: outcome.Error);
+            Record(record);
+            return record;
+        }
+
+        /// <summary>
+        /// Sends a setting command followed by <c>EER?</c> and an optional read-back query in one
+        /// exchange under the I/O lock (e.g. "V1 12.350;EER?;V1?"), and records the outcome:
+        /// OK, Mismatch (read-back differs from the requested value) or Failed (link error,
+        /// supply error code, or invalid reply).
+        /// </summary>
+        /// <param name="readbackQuery">Query (may hold several, separated by ';') or null.</param>
+        /// <param name="parseReadback">Turns the read-back reply lines into a number; null if invalid.</param>
+        private async Task<ActivityRecord> SendVerifiedAsync(string command, string source, double? requested,
+            string readbackQuery, Func<string[], double?> parseReadback, double tolerance)
         {
             command = command?.Trim() ?? string.Empty;
             var record = new ActivityRecord(ActivityRecord.KindCommand, command)
@@ -353,12 +386,111 @@ namespace QPX1200SPController.Services
                 Requested = requested
             };
 
-            var outcome = await ExecuteAsync(command, skipIfBusy: false);
+            // IFLOCK and IFUNLOCK answer although they are not queries: EER? comes after their reply.
+            int ownReplies = ReplyCount(command);
+            string line = command + ";EER?" + (readbackQuery == null ? "" : ";" + readbackQuery);
+            int generation = CurrentGeneration;
+            var outcome = await ExecuteAsync(line, skipIfBusy: false, recordFailure: false);
             record.DurationMs = outcome.DurationMs;
-            record.Result = outcome.Succeeded ? ActivityRecord.ResultOk : ActivityRecord.ResultFailed;
-            record.Detail = outcome.Error;
+
+            if (!outcome.Succeeded)
+            {
+                record.Complete(ActivityRecord.ResultFailed, detail: outcome.Error);
+                Record(record);
+                return record;
+            }
+
+            string[] lines = SplitLines(outcome.Response);
+            record.Response = string.Join("; ", lines);
+
+            int errorCode = 0;
+            double? readback = null;
+            bool valid = lines.Length > ownReplies
+                         && int.TryParse(lines[ownReplies], NumberStyles.Integer, Inv, out errorCode);
+            if (valid && readbackQuery != null)
+            {
+                readback = parseReadback(lines.Skip(ownReplies + 1).ToArray());
+                valid = readback.HasValue;
+            }
+
+            if (!valid)
+            {
+                record.Complete(ActivityRecord.ResultFailed, detail: "invalid reply");
+                Record(record);
+                await RegisterProtocolErrorAsync(line, outcome.Response,
+                    $"Invalid reply to '{line}': '{Escape(outcome.Response)}'", generation, recordError: false);
+                return record;
+            }
+
+            _consecutiveProtocolErrors = 0;
+            if (errorCode != 0)
+            {
+                string detail = DescribeError(errorCode);
+                LoggingService.Instance.LogWarning($"'{command}' refused by the supply: {detail}",
+                    nameof(PowerSupplyService), nameof(SendVerifiedAsync));
+                record.Complete(ActivityRecord.ResultFailed, readback, detail);
+            }
+            else if (requested.HasValue && readback.HasValue && Math.Abs(readback.Value - requested.Value) > tolerance)
+            {
+                string detail = $"read back {readback.Value.ToString(Inv)}, expected {requested.Value.ToString(Inv)}";
+                LoggingService.Instance.LogWarning($"'{command}': {detail}", nameof(PowerSupplyService), nameof(SendVerifiedAsync));
+                record.Complete(ActivityRecord.ResultMismatch, readback, detail);
+            }
+            else
+            {
+                record.Complete(ActivityRecord.ResultOk, readback);
+                if (HasPart(command, "TRIPRST"))
+                    ClearLatchedTrips();
+            }
+
             Record(record);
             return record;
+        }
+
+        /// <summary>Execution Error Register codes (manual p.26).</summary>
+        public static string DescribeError(int code)
+        {
+            switch (code)
+            {
+                case 0: return "no error";
+                case 100: return "error 100: value out of range";
+                case 101: return "error 101: store data corrupted";
+                case 102: return "error 102: store is empty";
+                case 103: return "error 103: second output not available (single-output supply)";
+                case 200: return "error 200: no write access (another interface has the lock, or this one is read-only)";
+                default:
+                    return code >= 1 && code <= 9
+                        ? $"error {code}: internal hardware error"
+                        : $"error {code}";
+            }
+        }
+
+        /// <summary>
+        /// Number of reply lines a command line produces: one per query, plus IFLOCK and
+        /// IFUNLOCK, which answer although they do not end in '?' (manual p.32).
+        /// </summary>
+        public static int ReplyCount(string command)
+        {
+            return Parts(command).Count(p => p.EndsWith("?") || p == "IFLOCK" || p == "IFUNLOCK");
+        }
+
+        private static bool IsLocalCommand(string command)
+        {
+            return HasPart(command, "LOCAL");
+        }
+
+        private static bool HasPart(string command, string part)
+        {
+            return Parts(command).Contains(part);
+        }
+
+        private static string[] Parts(string command)
+        {
+            return (command ?? string.Empty)
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim().ToUpperInvariant())
+                .Where(p => p.Length > 0)
+                .ToArray();
         }
 
         /// <summary>
@@ -387,7 +519,11 @@ namespace QPX1200SPController.Services
             return command.Trim().EndsWith("?");
         }
 
-        private async Task<CommandOutcome> ExecuteAsync(string command, bool skipIfBusy)
+        /// <param name="recordFailure">
+        /// False when the caller records the failure itself (setting commands), so a failed query
+        /// line is not logged twice.
+        /// </param>
+        private async Task<CommandOutcome> ExecuteAsync(string command, bool skipIfBusy, bool recordFailure = true)
         {
             command = command?.Trim();
             if (string.IsNullOrEmpty(command))
@@ -403,14 +539,14 @@ namespace QPX1200SPController.Services
 
                 LoggingService.Instance.LogWarning($"Command '{command}' not sent: link busy.",
                     nameof(PowerSupplyService), nameof(ExecuteAsync));
-                if (IsQuery(command))
+                if (recordFailure && IsQuery(command))
                     RecordCommError(command, null, "not sent: link busy");
                 return CommandOutcome.Failed("not sent: link busy");
             }
 
             try
             {
-                return await ExecuteLockedAsync(command);
+                return await ExecuteLockedAsync(command, recordFailure);
             }
             finally
             {
@@ -418,7 +554,7 @@ namespace QPX1200SPController.Services
             }
         }
 
-        private async Task<CommandOutcome> ExecuteLockedAsync(string command)
+        private async Task<CommandOutcome> ExecuteLockedAsync(string command, bool recordFailure)
         {
             NetworkStream stream;
             int generation;
@@ -430,7 +566,7 @@ namespace QPX1200SPController.Services
             if (stream == null || !IsConnected)
                 return CommandOutcome.Failed("not connected");
 
-            bool isQuery = IsQuery(command);
+            int replies = ReplyCount(command);
             var stopwatch = Stopwatch.StartNew();
             try
             {
@@ -438,13 +574,10 @@ namespace QPX1200SPController.Services
                 TraceService.Instance.Write(">>", command);
                 await WithTimeout(stream.WriteAsync(data, 0, data.Length), WriteTimeoutMs, "write");
 
-                if (command.Equals("TRIPRST", StringComparison.OrdinalIgnoreCase))
-                    ClearLatchedTrips();
-
-                if (!isQuery)
+                if (replies == 0)
                     return CommandOutcome.Ok(string.Empty, stopwatch.Elapsed.TotalMilliseconds);
 
-                string response = await ReadLinesAsync(stream, GetExpectedQueryLineCount(command), ResponseTimeoutMs);
+                string response = await ReadLinesAsync(stream, replies, ResponseTimeoutMs);
                 TraceService.Instance.Write("<<", response, stopwatch.Elapsed);
                 return CommandOutcome.Ok(response, stopwatch.Elapsed.TotalMilliseconds);
             }
@@ -456,7 +589,7 @@ namespace QPX1200SPController.Services
                 TraceService.Instance.Write("!!", $"{command}: {ex.Message}", stopwatch.Elapsed);
                 LoggingService.Instance.LogWarning($"Command '{command}' failed: {ex.Message}",
                     nameof(PowerSupplyService), nameof(ExecuteLockedAsync));
-                if (isQuery)
+                if (recordFailure && replies > 0)
                     RecordCommError(command, null, ex.Message, elapsedMs);
                 HandleConnectionFault(generation, ex.Message);
                 return CommandOutcome.Failed(ex.Message, elapsedMs);
@@ -480,13 +613,6 @@ namespace QPX1200SPController.Services
             {
                 return new CommandOutcome { Error = error, DurationMs = durationMs };
             }
-        }
-
-        private static int GetExpectedQueryLineCount(string command)
-        {
-            var parts = command.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-            int queryCount = parts.Count(p => p.TrimEnd().EndsWith("?"));
-            return Math.Max(queryCount, 1);
         }
 
         /// <summary>
@@ -533,9 +659,11 @@ namespace QPX1200SPController.Services
         /// Called after an unparseable reply. Discards anything left in the receive path so the
         /// next exchange starts clean; repeated errors force a reconnect.
         /// </summary>
-        private async Task RegisterProtocolErrorAsync(string command, string response, string description, int generation)
+        private async Task RegisterProtocolErrorAsync(string command, string response, string description, int generation,
+            bool recordError = true)
         {
-            RecordCommError(command, response, description);
+            if (recordError)
+                RecordCommError(command, response, description);
             _consecutiveProtocolErrors++;
             LoggingService.Instance.LogWarning(
                 $"{description} (consecutive invalid responses: {_consecutiveProtocolErrors})",
@@ -818,33 +946,79 @@ namespace QPX1200SPController.Services
 
         #region Set commands
 
-        // Each returns the command's log record (check .Success); callers add the read-back with Complete().
+        // Setting resolutions (manual p.4): values are rounded to these before they are sent.
+        public const double VoltageStep = 0.001;
+        public const double CurrentStep = 0.01;
+        public const double OvpStep = 0.1;
+        public const double OcpStep = 0.1;
+
+        // Each returns the command's record (check .Success / .Result). The record has already been
+        // raised through ActivityRecorded with its EER? result and read-back.
 
         public Task<ActivityRecord> SetVoltageAsync(double voltage, string source = "App")
         {
-            return SendConfigCommandAsync("V1 " + voltage.ToString("F3", Inv), source, Math.Round(voltage, 3));
+            double value = RoundTo(voltage, VoltageStep);
+            return SendVerifiedAsync("V1 " + value.ToString("F3", Inv), source, value,
+                "V1?", r => ReadPrefixed(r, "V1"), VoltageStep / 2);
         }
 
         public Task<ActivityRecord> SetCurrentAsync(double current, string source = "App")
         {
-            return SendConfigCommandAsync("I1 " + current.ToString("F3", Inv), source, Math.Round(current, 3));
+            double value = RoundTo(current, CurrentStep);
+            return SendVerifiedAsync("I1 " + value.ToString("F2", Inv), source, value,
+                "I1?", r => ReadPrefixed(r, "I1"), CurrentStep / 2);
         }
 
         public Task<ActivityRecord> SetOutputAsync(bool enabled, string source = "App")
         {
-            return SendConfigCommandAsync(enabled ? "OP1 1" : "OP1 0", source, enabled ? 1 : 0);
+            return SendVerifiedAsync(enabled ? "OP1 1" : "OP1 0", source, enabled ? 1 : 0,
+                "OP1?", r => r.Length == 1 ? ReadBit(r[0]) : null, 0);
         }
 
         public Task<ActivityRecord> SetOverVoltageProtectionAsync(double voltage, string source = "App")
         {
             // The protection is always enabled on the QPX1200SP; only the level can be set.
-            return SendConfigCommandAsync("OVP1 " + voltage.ToString("F3", Inv), source, Math.Round(voltage, 3));
+            double value = RoundTo(voltage, OvpStep);
+            return SendVerifiedAsync("OVP1 " + value.ToString("F1", Inv), source, value,
+                "OVP1?", r => ReadPrefixed(r, "VP1"), OvpStep / 2);
         }
 
         public Task<ActivityRecord> SetOverCurrentProtectionAsync(double current, string source = "App")
         {
             // The protection is always enabled on the QPX1200SP; only the level can be set.
-            return SendConfigCommandAsync("OCP1 " + current.ToString("F3", Inv), source, Math.Round(current, 3));
+            double value = RoundTo(current, OcpStep);
+            return SendVerifiedAsync("OCP1 " + value.ToString("F1", Inv), source, value,
+                "OCP1?", r => ReadPrefixed(r, "CP1"), OcpStep / 2);
+        }
+
+        /// <summary>TRIPRST. The app's trip latches are cleared when the supply accepts it.</summary>
+        public Task<ActivityRecord> TripResetAsync(string source = "App")
+        {
+            return SendVerifiedAsync("TRIPRST", source, null, null, null, 0);
+        }
+
+        /// <summary>
+        /// LOCAL: hands the front panel back. Sent on its own and not checked, because any further
+        /// character puts the supply back into Remote.
+        /// </summary>
+        public Task<ActivityRecord> GoLocalAsync(string source = "App")
+        {
+            return SendUnverifiedAsync("LOCAL", source);
+        }
+
+        private static double? ReadPrefixed(string[] lines, string prefix)
+        {
+            return lines.Length == 1 && TryParseWithPrefix(lines[0], prefix, out double value) ? value : (double?)null;
+        }
+
+        private static double? ReadBit(string text)
+        {
+            return text == "1" ? 1 : text == "0" ? 0 : (double?)null;
+        }
+
+        public static double RoundTo(double value, double step)
+        {
+            return Math.Round(Math.Round(value / step, MidpointRounding.AwayFromZero) * step, 6);
         }
 
         #endregion

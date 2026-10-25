@@ -17,7 +17,6 @@ namespace QPX1200SPController
         private MainViewModel _viewModel;
         private LivePlotPresenter _voltagePresenter;
         private LivePlotPresenter _currentPresenter;
-        private LivePlotPresenter _powerPresenter;
         private GridLength _savedControlWidth = new GridLength(DefaultControlWidth);
         private bool _closeConfirmed;
         private bool _closeInProgress;
@@ -63,19 +62,16 @@ namespace QPX1200SPController
 
             if (_voltagePresenter == null)
             {
-                _voltagePresenter = new LivePlotPresenter(
-                    VoltagePlot, "Voltage (V)", "V", "F3", s => s.Voltage, p => p.Voltage, _viewModel.VoltageYAxis);
-                _currentPresenter = new LivePlotPresenter(
-                    CurrentPlot, "Current (A)", "A", "F3", s => s.Current, p => p.Current, _viewModel.CurrentYAxis);
-                _powerPresenter = new LivePlotPresenter(
-                    PowerPlot, "Power (W)", "W", "F2", s => s.Power, p => p.Power, _viewModel.PowerYAxis);
+                // Minimum Signal spans: about ten steps of the supply's resolution.
+                _voltagePresenter = new LivePlotPresenter(VoltagePlot, "Voltage (V)", "Voltage", "V", "F3", 0.01,
+                    s => s.Voltages, p => p.Voltage, _viewModel.VoltageYAxis);
+                _currentPresenter = new LivePlotPresenter(CurrentPlot, "Current (A)", "Current", "A", "F3", 0.1,
+                    s => s.Currents, p => p.Current, _viewModel.CurrentYAxis);
 
-                // Zooming or panning one plot moves the time axis of all three.
-                var plots = new[] { VoltagePlot, CurrentPlot, PowerPlot };
-                foreach (var a in plots)
-                    foreach (var b in plots)
-                        if (a != b)
-                            a.Plot.Axes.Link(b, x: true, y: false);
+
+                // Zooming or panning one plot moves the time axis of the other.
+                VoltagePlot.Plot.Axes.Link(CurrentPlot, x: true, y: false);
+                CurrentPlot.Plot.Axes.Link(VoltagePlot, x: true, y: false);
 
                 foreach (var presenter in Presenters)
                     presenter.UserNavigated += OnPlotNavigated;
@@ -134,6 +130,17 @@ namespace QPX1200SPController
             }
         }
 
+        /// <summary>Soft limits and Alarms open one at a time, so the control panel fits without scrolling.</summary>
+        private void OnPanelExpanderExpanded(object sender, RoutedEventArgs e)
+        {
+            if (e.OriginalSource != sender)
+                return;
+            if (sender == SoftLimitsExpander)
+                AlarmsExpander.IsExpanded = false;
+            else if (sender == AlarmsExpander)
+                SoftLimitsExpander.IsExpanded = false;
+        }
+
         private void OnGraphDataUpdated()
         {
             if (!Dispatcher.CheckAccess())
@@ -144,18 +151,18 @@ namespace QPX1200SPController
             RefreshGraphs();
         }
 
-        private LivePlotPresenter[] Presenters => new[] { _voltagePresenter, _currentPresenter, _powerPresenter };
+        private LivePlotPresenter[] Presenters => new[] { _voltagePresenter, _currentPresenter };
 
         private void RefreshGraphs()
         {
             if (_viewModel == null || _voltagePresenter == null)
                 return;
 
-            var samples = _viewModel.GetGraphSamples();
             bool follow = _viewModel.IsFollowingLive;
-            var window = _viewModel.SelectedGraphTimeWindow?.Duration;
+            var window = _viewModel.GraphWindow;
+            bool markers = _viewModel.ShowLiveMarkers;
             foreach (var presenter in Presenters)
-                presenter.Update(samples, follow, window);
+                presenter.Update(_viewModel.LiveBuffer, follow, window, markers);
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -253,13 +260,12 @@ namespace QPX1200SPController
             ThemeService.Instance.ThemeChanged -= OnThemeChanged;
             _voltagePresenter?.Dispose();
             _currentPresenter?.Dispose();
-            _powerPresenter?.Dispose();
         }
 
         private void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
-            Title = $"QPX1200SP Monitoring & Control v{version}";
+            Title = $"QPX1200SP Monitoring & Control v{version.ToString(3)}";
         }
     }
 }
