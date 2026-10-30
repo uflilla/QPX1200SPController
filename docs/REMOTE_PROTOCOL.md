@@ -6,7 +6,7 @@ A test executing software (the "client") connects to this app over TCP. It can s
 
 The protocol is the same as the CPX400DP Controller's, so one client can drive both apps. The QPX1200SP has one output; the differences are listed at the end.
 
-A working C# client is in [examples/RemoteClientExample.cs](examples/RemoteClientExample.cs).
+A working C# client is in [examples/RemoteClientExample.cs](examples/RemoteClientExample.cs). How the operator switches remote control on is in the [user guide](USER_GUIDE.md#14-remote-control-by-test-software).
 
 ## Connection
 

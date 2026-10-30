@@ -2,7 +2,7 @@
 
 A fake QPX1200SP that speaks the same SCPI-over-TCP protocol as the real supply (port 9221).
 Use it to test QPX1200SPController without hardware, including fault cases that are hard to
-produce on the real instrument.
+produce on the real instrument. The app itself is described in `docs/USER_GUIDE.md`.
 
 ## Run it
 
@@ -68,7 +68,7 @@ Note that test data is logged to the app's `powerlog.db` like real data.
 | Do this in the simulator | Expected in the app |
 |---|---|
 | `load 2` with V = 12 V, I = 1 A, output ON | Meters show ~2 V / 1 A, CC indicator lit |
-| In the app set V above OVP (or `trip ovp`) | Output goes OFF, OVP indicator stays lit until **TRIP Reset** |
+| In the app set V above OVP (or `trip ovp`) | Output goes OFF, OVP indicator stays lit until **TRIP RESET** |
 | `readonly`, then SET a voltage | Last-command line in red: `✗ Failed: error 200: no write access ...` |
 | `vcap 5`, then SET 12 V | Last-command line in red: `⚠ Mismatch: read back 5, expected 12` |
 | `garble 1` | One warning in App Logs, link stays up, no zero values in plots |
@@ -77,5 +77,5 @@ Note that test data is logged to the app's `powerlog.db` like real data.
 | `mute`, then `mute off` | Same as above |
 | `drop` | App reconnects within a second or two |
 | `outage 30` | App keeps retrying (1, 2, 5, then every 10 s) and reconnects when it ends |
-| Close the app with output ON | Exit dialog; "Turn output OFF and exit" → simulator logs `OP1 0` |
+| Close the app with output ON | Exit dialog; **TURN OUTPUT OFF AND EXIT** → simulator logs `OP1 0` |
 | App Logs → Trace mode ON | Every command/reply in `Logs\Trace\trace_*.log` next to the app exe |
