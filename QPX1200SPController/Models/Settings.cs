@@ -18,6 +18,8 @@ namespace QPX1200SPController.Models
         public const double InstrumentMaxVoltage = 60.0;
         public const double InstrumentMaxCurrent = 50.0;
         public const string DefaultIpAddress = "170.170.170.220";
+        // 9500 is the CPX400DP Controller's, so both apps can run on one PC.
+        public const int DefaultRemotePort = 9501;
         public static readonly double[] SampleRateOptionsHz = { 0.5, 1.0, 2.0, 5.0 };
 
         private static readonly string SettingsFilePath = Path.Combine(
@@ -38,6 +40,9 @@ namespace QPX1200SPController.Models
 
         /// <summary>Database rows older than this are deleted. 0 keeps everything.</summary>
         public int RetentionDays { get; set; } = 0;
+
+        /// <summary>TCP port of the remote control server (docs/REMOTE_PROTOCOL.md). The switch itself is not saved.</summary>
+        public int RemotePort { get; set; } = DefaultRemotePort;
 
         /// <summary>Most recently used first.</summary>
         public List<string> RecentIpAddresses { get; set; } = new List<string>();
@@ -107,6 +112,8 @@ namespace QPX1200SPController.Models
             if (Array.IndexOf(SampleRateOptionsHz, SampleRateHz) < 0)
                 SampleRateHz = 1.0;
 
+            if (RemotePort <= 0 || RemotePort > 65535)
+                RemotePort = DefaultRemotePort;
             if (RetentionDays < 0)
                 RetentionDays = 0;
 

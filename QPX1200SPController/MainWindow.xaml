@@ -486,6 +486,22 @@
               </TextBlock.Style>
             </TextBlock>
 
+            <Rectangle
+              Width="1"
+              Margin="14,2"
+              Fill="{DynamicResource MaterialDesign.Brush.Separator.Background}" />
+            <materialDesign:PackIcon
+              Width="14"
+              Height="14"
+              Margin="0,0,5,0"
+              VerticalAlignment="Center"
+              Kind="RemoteDesktop"
+              Opacity="0.7" />
+            <TextBlock
+              VerticalAlignment="Center"
+              Text="{Binding RemoteStatusText}"
+              ToolTip="Remote control by a test software over TCP (switch in the connection bar; port in settings.xml)" />
+
             <StackPanel Orientation="Horizontal" Visibility="{Binding IsSequenceRunning, Converter={StaticResource BoolToVisibilityConverter}}">
               <Rectangle
                 Width="1"
@@ -650,6 +666,18 @@
                   SelectedItem="{Binding SelectedSampleRate}"
                   Style="{StaticResource MaterialDesignComboBox}"
                   ToolTip="How often the supply is read and logged to the database" />
+                <ToggleButton
+                  Margin="18,0,0,0"
+                  VerticalAlignment="Center"
+                  AutomationProperties.Name="Remote control"
+                  IsChecked="{Binding IsRemoteControlOn}"
+                  Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                  ToolTip="Remote control: a test software may connect over TCP and set, switch and read the output (docs/REMOTE_PROTOCOL.md). Off at every start. TURN OUTPUT OFF always works here." />
+                <TextBlock
+                  Margin="8,0,0,0"
+                  VerticalAlignment="Center"
+                  FontSize="12"
+                  Text="Remote control" />
               </StackPanel>
             </DockPanel>
           </materialDesign:Card>

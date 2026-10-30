@@ -16,6 +16,15 @@ using Settings = QPX1200SPController.Models.Settings;
 
 namespace QPX1200SPController.ViewModels
 {
+    /// <summary>A value sent by <see cref="MainViewModel.SendSettingAsync"/>.</summary>
+    public enum OutputSetting
+    {
+        Voltage,
+        Current,
+        Ovp,
+        Ocp
+    }
+
     public class MainViewModel : ViewModelBase
     {
         private static readonly TimeSpan SettingsPollInterval = TimeSpan.FromSeconds(3);
@@ -26,6 +35,7 @@ namespace QPX1200SPController.ViewModels
         private readonly Settings _settings = Settings.Current;
         private readonly DispatcherTimer _pollTimer;
         private readonly DispatcherTimer _statusBarTimer;
+        private readonly RemoteServer _remoteServer;
 
         private bool _pollInProgress;
         private bool _shutdownInProgress;
@@ -60,6 +70,8 @@ namespace QPX1200SPController.ViewModels
         private bool _isControlPanelVisible = true;
         private bool _isFollowingLive = true;
         private int _lastTripBits;
+        private bool _isRemoteControlOn;
+        private string _remoteStatusText = "Remote: off";
         private GraphTimeWindowOption _selectedGraphTimeWindow;
         private SampleRateOption _selectedSampleRate;
         private string _lastReadingText = "No readings yet";
@@ -543,6 +555,9 @@ namespace QPX1200SPController.ViewModels
 
             _powerSupplyService.ConnectionStateChanged += OnConnectionStateChanged;
             _powerSupplyService.ActivityRecorded += OnActivityRecorded;
+
+            _remoteServer = new RemoteServer(new RemoteCommandHandler(this).HandleAsync);
+            _remoteServer.ClientChanged += OnRemoteClientChanged;
         }
 
         public ICommand ToggleThemeCommand { get; }
@@ -663,7 +678,18 @@ namespace QPX1200SPController.ViewModels
                 return;
             }
 
-            bool success = await _powerSupplyService.ConnectAsync(ip);
+            // "host:port" connects to another port (e.g. a simulator on 127.0.0.1:9231); the default is 9221.
+            string host = ip;
+            int port = PowerSupplyService.DefaultPort;
+            int colon = ip.LastIndexOf(':');
+            if (colon > 0 && int.TryParse(ip.Substring(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int parsed)
+                && parsed > 0 && parsed <= 65535)
+            {
+                host = ip.Substring(0, colon);
+                port = parsed;
+            }
+
+            bool success = await _powerSupplyService.ConnectAsync(host, port);
             if (success)
             {
                 RememberIpAddress(ip);
@@ -957,9 +983,7 @@ namespace QPX1200SPController.ViewModels
                 await ShowErrorAsync("Voltage out of range", $"Voltage must be between {MinVoltageToSet:F3} V and {MaxVoltageToSet:F3} V.");
                 return;
             }
-
-            var record = await _powerSupplyService.SetVoltageAsync(VoltageToSet, CommandSource);
-            ApplySetpointReadback(record, "Voltage", "V", "F3", (s, v) => s.SetVoltage = v);
+            await SendSettingAsync(OutputSetting.Voltage, VoltageToSet, CommandSource);
         }
 
         private async Task SetCurrentAsync()
@@ -969,9 +993,7 @@ namespace QPX1200SPController.ViewModels
                 await ShowErrorAsync("Current out of range", $"Current must be between {MinCurrentToSet:F2} A and {MaxCurrentToSet:F2} A.");
                 return;
             }
-
-            var record = await _powerSupplyService.SetCurrentAsync(CurrentToSet, CommandSource);
-            ApplySetpointReadback(record, "Current", "A", "F2", (s, v) => s.SetCurrent = v);
+            await SendSettingAsync(OutputSetting.Current, CurrentToSet, CommandSource);
         }
 
         private async Task SetOvpAsync()
@@ -981,9 +1003,7 @@ namespace QPX1200SPController.ViewModels
                 await ShowErrorAsync("OVP out of range", $"OVP must be between {MinOvpToSet:F1} V and {MaxOvpToSet:F1} V.");
                 return;
             }
-
-            var record = await _powerSupplyService.SetOverVoltageProtectionAsync(OvpToSet, CommandSource);
-            ApplySetpointReadback(record, "OVP", "V", "F1", (s, v) => s.SetOvpLevel = v);
+            await SendSettingAsync(OutputSetting.Ovp, OvpToSet, CommandSource);
         }
 
         private async Task SetOcpAsync()
@@ -993,9 +1013,42 @@ namespace QPX1200SPController.ViewModels
                 await ShowErrorAsync("OCP out of range", $"OCP must be between {MinOcpToSet:F1} A and {MaxOcpToSet:F1} A.");
                 return;
             }
+            await SendSettingAsync(OutputSetting.Ocp, OcpToSet, CommandSource);
+        }
 
-            var record = await _powerSupplyService.SetOverCurrentProtectionAsync(OcpToSet, CommandSource);
-            ApplySetpointReadback(record, "OCP", "A", "F1", (s, v) => s.SetOcpLevel = v);
+        /// <summary>
+        /// Sends one setting (SET buttons, remote protocol) with its EER? check and read-back, and shows
+        /// the read-back in the meters' footers. The caller checks the range first.
+        /// </summary>
+        public async Task<ActivityRecord> SendSettingAsync(OutputSetting setting, double value, string source)
+        {
+            switch (setting)
+            {
+                case OutputSetting.Voltage:
+                {
+                    var record = await _powerSupplyService.SetVoltageAsync(value, source);
+                    ApplySetpointReadback(record, "Voltage", "V", "F3", (s, v) => s.SetVoltage = v);
+                    return record;
+                }
+                case OutputSetting.Current:
+                {
+                    var record = await _powerSupplyService.SetCurrentAsync(value, source);
+                    ApplySetpointReadback(record, "Current", "A", "F2", (s, v) => s.SetCurrent = v);
+                    return record;
+                }
+                case OutputSetting.Ovp:
+                {
+                    var record = await _powerSupplyService.SetOverVoltageProtectionAsync(value, source);
+                    ApplySetpointReadback(record, "OVP", "V", "F1", (s, v) => s.SetOvpLevel = v);
+                    return record;
+                }
+                default:
+                {
+                    var record = await _powerSupplyService.SetOverCurrentProtectionAsync(value, source);
+                    ApplySetpointReadback(record, "OCP", "A", "F1", (s, v) => s.SetOcpLevel = v);
+                    return record;
+                }
+            }
         }
 
         /// <summary>
@@ -1026,28 +1079,76 @@ namespace QPX1200SPController.ViewModels
 
         private async Task ToggleOutput()
         {
-            bool enable = !Status.OutputEnabled;
             // Turning on needs the configuration unlocked; turning off is always allowed while connected.
-            if (enable && !IsInConfigMode)
-                return;
-            if (enable && !await ConfirmOutputOnIfRequiredAsync())
-                return;
-
-            var record = await _powerSupplyService.SetOutputAsync(enable, CommandSource);
-            if (record.Result == ActivityRecord.ResultOk)
-                LoggingService.Instance.LogInfo($"Output switched {(enable ? "ON" : "OFF")}.", nameof(MainViewModel), nameof(ToggleOutput));
-
-            await RefreshStatusAsync();
+            if (Status.OutputEnabled)
+            {
+                await TurnOffAsync(CommandSource);
+            }
+            else
+            {
+                if (!IsInConfigMode)
+                    return;
+                if (await TurnOnAsync(CommandSource, ConfirmOutputOnIfRequiredAsync) == null)
+                    return;
+            }
             IsInConfigMode = false;
+        }
+
+        /// <summary>
+        /// Turns the output on (TURN OUTPUT ON button, remote protocol), asking <paramref name="confirm"/>
+        /// first if given; returns null if not confirmed. Then reads the live values at once.
+        /// </summary>
+        public async Task<ActivityRecord> TurnOnAsync(string source, Func<Task<bool>> confirm = null)
+        {
+            if (confirm != null && !await confirm())
+                return null;
+
+            var record = await _powerSupplyService.SetOutputAsync(true, source);
+            if (record.Result == ActivityRecord.ResultOk)
+                LoggingService.Instance.LogInfo("Output switched ON.", nameof(MainViewModel), nameof(TurnOnAsync));
+            await RefreshStatusAsync();
+            return record;
+        }
+
+        /// <summary>Turns the output off. Never asks; allowed whenever connected.</summary>
+        public async Task<ActivityRecord> TurnOffAsync(string source)
+        {
+            var record = await _powerSupplyService.SetOutputAsync(false, source);
+            if (record.Result == ActivityRecord.ResultOk)
+                LoggingService.Instance.LogInfo("Output switched OFF.", nameof(MainViewModel), nameof(TurnOffAsync));
+            await RefreshStatusAsync();
+            return record;
         }
 
         /// <summary>Reads the live values at once (after a command) instead of waiting for the next poll.</summary>
         private async Task RefreshStatusAsync()
         {
-            var status = await _powerSupplyService.GetStatusAsync(skipIfBusy: false);
-            if (status != null)
-                ApplyStatus(status);
+            await ReadNowAsync();
         }
+
+        /// <summary>
+        /// Reads the live values now (not skipped when the link is busy) and handles the reading like a
+        /// poll: meters, plots, alarms, database. Null if the read failed. Used by the remote "read".
+        /// </summary>
+        public async Task<PowerSupplyStatus> ReadNowAsync()
+        {
+            var status = await _powerSupplyService.GetStatusAsync(skipIfBusy: false);
+            if (status != null && !_shutdownInProgress)
+                ApplyStatus(status);
+            return status;
+        }
+
+        /// <summary>Reads the programmed V, I, OVP and OCP from the supply and shows them. Null if the read failed.</summary>
+        public async Task<PowerSupplySettingStatus> ReadSettingsNowAsync()
+        {
+            var settings = await _powerSupplyService.GetPowerSupplySettingsAsync(skipIfBusy: false);
+            if (settings != null)
+                PowerSupplySettingStatus = settings;
+            return settings;
+        }
+
+        /// <summary>A protection trip (OVP, OCP, sense, fault) is latched until TRIP RESET.</summary>
+        public bool HasLatchedTrip => HasTrip(Status?.EventStatus);
 
         /// <summary>Asks before switching the output on (unless switched off in the settings). True = go ahead.</summary>
         private async Task<bool> ConfirmOutputOnIfRequiredAsync()
@@ -1165,6 +1266,106 @@ namespace QPX1200SPController.ViewModels
 
         #endregion
 
+        #region Remote control
+
+        /// <summary>
+        /// Remote control switch: while on, a test software may connect over TCP and set, switch and
+        /// read the output (docs/REMOTE_PROTOCOL.md). Switching it on is the operator's go-ahead, so
+        /// remote commands do not need "Enable configuration". Not saved: off at every start.
+        /// </summary>
+        public bool IsRemoteControlOn
+        {
+            get => _isRemoteControlOn;
+            set
+            {
+                if (_isRemoteControlOn == value || _shutdownInProgress)
+                {
+                    RaisePropertyChanged();
+                    return;
+                }
+                if (value)
+                    StartRemoteControl();
+                else
+                    StopRemoteControl("port closed");
+            }
+        }
+
+        /// <summary>"Remote: off", "Remote: waiting on port 9501" or "Remote: client 192.168.1.20".</summary>
+        public string RemoteStatusText
+        {
+            get => _remoteStatusText;
+            private set => SetProperty(ref _remoteStatusText, value);
+        }
+
+        private void StartRemoteControl()
+        {
+            int port = _settings.RemotePort;
+            try
+            {
+                _remoteServer.Start(port);
+            }
+            catch (System.Net.Sockets.SocketException ex)
+            {
+                LoggingService.Instance.LogWarning($"Remote control: port {port} could not be opened ({ex.Message}).",
+                    nameof(MainViewModel), nameof(StartRemoteControl));
+                RaisePropertyChanged(nameof(IsRemoteControlOn)); // the switch goes back off
+                _ = Dialogs.InfoAsync("Remote control not started",
+                    $"Port {port} could not be opened: {ex.Message}\n\nAnother program may be using it. The port is set in settings.xml (RemotePort).",
+                    isError: true);
+                return;
+            }
+
+            _isRemoteControlOn = true;
+            RaisePropertyChanged(nameof(IsRemoteControlOn));
+            LogConnection("Remote control on", $"listening on port {port}", "Operator");
+            UpdateRemoteStatus();
+        }
+
+        private void StopRemoteControl(string detail)
+        {
+            _isRemoteControlOn = false;
+            RaisePropertyChanged(nameof(IsRemoteControlOn));
+            _remoteServer.Stop();
+            LogConnection("Remote control off", detail, "Operator");
+            UpdateRemoteStatus();
+        }
+
+        private void OnRemoteClientChanged(string address)
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted)
+                return;
+            dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (address != null)
+                    LogConnection("Remote client connected", address, "Remote");
+                else
+                    LogConnection("Remote client left", "connection closed", "Remote");
+                UpdateRemoteStatus();
+            }));
+        }
+
+        private void UpdateRemoteStatus()
+        {
+            if (!_remoteServer.IsListening)
+                RemoteStatusText = "Remote: off";
+            else if (_remoteServer.ClientAddress != null)
+                RemoteStatusText = $"Remote: client {_remoteServer.ClientAddress}";
+            else
+                RemoteStatusText = $"Remote: waiting on port {_remoteServer.Port}";
+        }
+
+        /// <summary>Writes a connection record (database, Data Logs, live-plot marker) for an app-side event.</summary>
+        private void LogConnection(string result, string detail, string source)
+        {
+            var record = new ActivityRecord(ActivityRecord.KindConnection) { Source = source };
+            record.Complete(result, detail: detail);
+            _databaseService.EnqueueActivity(record);
+            OnActivityRecorded(record);
+        }
+
+        #endregion
+
         #region Shutdown
 
         /// <summary>
@@ -1188,9 +1389,11 @@ namespace QPX1200SPController.ViewModels
                     if (choice == ExitChoice.Cancel)
                         return false;
 
-                    // A running sequence must not send any more set-points while the app closes.
+                    // A running sequence or a remote client must not send any more commands while the app closes.
                     if (IsSequenceRunning)
                         StopSequenceRequested?.Invoke();
+                    if (IsRemoteControlOn)
+                        StopRemoteControl("app closing");
 
                     _pollTimer.Stop();
 
@@ -1225,6 +1428,8 @@ namespace QPX1200SPController.ViewModels
                     }
                 }
 
+                if (IsRemoteControlOn)
+                    StopRemoteControl("app closing");
                 _powerSupplyService.ConnectionStateChanged -= OnConnectionStateChanged;
                 _pollTimer.Stop();
                 _powerSupplyService.Disconnect();

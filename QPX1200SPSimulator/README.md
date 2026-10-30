@@ -20,6 +20,12 @@ Options:
 | `--load 20` | Initial resistive load in ohms, or `open` (default 20 Ω) |
 
 The app remembers the last IP, so switch it back to the real supply's address afterwards.
+
+With `--port` set to something other than 9221, type the port into the app's IP box, e.g. `127.0.0.1:9231`.
+
+`tools/simulator.ps1` runs the simulator with its console fed from a text file, so tests can send console commands
+(`Add-Content sim-commands.txt 'trip ocp'`). `tools/remotecheck.ps1` uses it for the end-to-end check of the remote
+control protocol (`docs/REMOTE_PROTOCOL.md`).
 Note that test data is logged to the app's `powerlog.db` like real data.
 
 ## What it simulates
