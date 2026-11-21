@@ -672,12 +672,24 @@
                   AutomationProperties.Name="Remote control"
                   IsChecked="{Binding IsRemoteControlOn}"
                   Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                  ToolTip="Remote control: a test software may connect over TCP and set, switch and read the output (docs/REMOTE_PROTOCOL.md). Off at every start. TURN OUTPUT OFF always works here." />
+                  ToolTip="Remote control: a test software may connect over TCP and set, switch and read the output (docs/REMOTE_PROTOCOL.md, docs/REMOTE_PROTOCOL_CCSDS.md). Off at every start. TURN OUTPUT OFF always works here." />
                 <TextBlock
                   Margin="8,0,0,0"
                   VerticalAlignment="Center"
                   FontSize="12"
                   Text="Remote control" />
+                <ComboBox
+                  Width="72"
+                  Margin="8,0,0,0"
+                  VerticalAlignment="Center"
+                  AutomationProperties.Name="Remote protocol"
+                  DisplayMemberPath="DisplayName"
+                  FontSize="12"
+                  IsEnabled="{Binding CanChangeRemoteProtocol}"
+                  ItemsSource="{Binding RemoteProtocols}"
+                  SelectedItem="{Binding SelectedRemoteProtocol}"
+                  Style="{StaticResource MaterialDesignComboBox}"
+                  ToolTip="Remote protocol: JSON lines (docs/REMOTE_PROTOCOL.md) or CCSDS packets with periodic housekeeping (docs/REMOTE_PROTOCOL_CCSDS.md). Change it while Remote control is off." />
               </StackPanel>
             </DockPanel>
           </materialDesign:Card>

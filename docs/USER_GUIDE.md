@@ -1,6 +1,6 @@
 # QPX1200SP Monitoring & Control: User Guide
 
-Version 2.9 · Developed by: Umar Faruq Lilla
+Version 2.10 · Developed by: Umar Faruq Lilla
 
 This app monitors and controls an Aim-TTi **QPX1200SP** power supply (60 V, 50 A, 1200 W) over the network (LAN). It shows the output live in large digits and plots, logs every reading and every command to a database, and adds what the supply's own front panel does not have: a controls lock, a check of every setting with a read-back, alarms, a sequencer, history plots, and remote control by test software.
 
@@ -66,7 +66,7 @@ From top to bottom:
 
 - **Header bar**: the supply's identity (its `*IDN?` reply) once connected; the page buttons **Monitoring & Control**, **Sequencer**, **History**, **Data Logs**, **SCPI Console** and **App Logs**; on the right the connection chip (green Connected, amber while reconnecting, red when disconnected or failed), the **OUTPUT ON/OFF** chip, and the theme button (dark/light).
 - **Alarm banner** (red, on every page) while an alarm has not been acknowledged ([section 8](#8-alarms)).
-- **Connection bar**: IP address, CONNECT, DISCONNECT, Sample rate, Remote control ([section 14](#14-remote-control-by-test-software)); on the right the live plot settings (Plot window, Follow live, Markers) and **Hide controls / Show controls**.
+- **Connection bar**: IP address, CONNECT, DISCONNECT, Sample rate, Remote control and its protocol, JSON or CCSDS ([section 14](#14-remote-control-by-test-software)); on the right the live plot settings (Plot window, Follow live, Markers) and **Hide controls / Show controls**.
 - **Left**: the status chips (CV, CC, UNREG, OVP, OCP, SENSE, FAULT) and the measured **voltage** and **current** in large digits. Under each: the set voltage and OVP level, the current limit and OCP level, as read from the supply. At the bottom the session counters.
 - **Middle**: the live voltage and current plots.
 - **Right**: the control panel ([section 5](#5-setting-the-output)).
@@ -313,16 +313,26 @@ The **App Logs** page lists the app's own messages of this session (information,
 
 ## 14. Remote control by test software
 
-A test program (for example one that runs a test plan on a unit and checks the unit over serial) can set the output, turn it on and off, and read it back through this app over TCP. The full message description is in [REMOTE_PROTOCOL.md](REMOTE_PROTOCOL.md), with a working C# example in [examples/RemoteClientExample.cs](examples/RemoteClientExample.cs). The protocol is the same as the CPX400DP Controller's.
+A test program (for example one that runs a test plan on a unit and checks the unit over serial) can set the output, turn it on and off, and read it back through this app over TCP. The app speaks two protocols on the same port. You pick one in the connection bar:
+
+| Protocol | For | Description | Example client |
+|---|---|---|---|
+| **JSON** | Test scripts and the CPX400DP Controller's clients: one readable JSON line per request | [REMOTE_PROTOCOL.md](REMOTE_PROTOCOL.md) | [examples/RemoteClientExample.cs](examples/RemoteClientExample.cs) |
+| **CCSDS** | Control software that works with CCSDS telecommand / telemetry packets (PUS-A). Also sends housekeeping on its own. | [REMOTE_PROTOCOL_CCSDS.md](REMOTE_PROTOCOL_CCSDS.md) | [examples/CcsdsClientExample.cs](examples/CcsdsClientExample.cs) |
+
+Both run the same three commands with the same checks: **set** (voltage, current, OVP, OCP), **output** (on/off) and **read**.
 
 **To allow it:**
 
 1. Connect the app to the supply.
-2. Switch on **Remote control** in the connection bar.
+2. Pick the protocol, **JSON** or **CCSDS**, in the drop-down next to **Remote control** in the connection bar. The choice is saved. It can only be changed while Remote control is off.
+3. Switch on **Remote control**.
 
-The status bar then shows "Remote: waiting on port 9501", and "Remote: client 192.168.1.20" once the test program connects. Only one test program can be connected at a time.
+The status bar then shows the protocol and the state, for example "Remote: CCSDS, waiting on port 9501", and "Remote: CCSDS, client 192.168.1.20" once the test program connects. Only one test program can be connected at a time.
 
-**What the test program can do**, one JSON line per request:
+### 14.1 JSON
+
+One JSON line per request, one reply per request:
 
 | Command | Example | Reply |
 |---|---|---|
@@ -330,7 +340,25 @@ The status bar then shows "Remote: waiting on port 9501", and "Remote: client 19
 | `output` | `{"cmd":"output","on":true}` | Whether the output is on afterwards |
 | `read` | `{"cmd":"read"}` | Measured voltage and current, CV/CC, trip, and the settings (set voltage, current limit, OVP, OCP) |
 
-**Safety:**
+A refused request gets `"ok": false` and an `error` text that says why. JSON sends nothing the test program did not ask for. It is the same protocol as the CPX400DP Controller's, so one test program can drive both apps.
+
+### 14.2 CCSDS
+
+Binary CCSDS space packets, big-endian, laid out as in the "TM Packet Format" sample: a PUS-A data field header with service type, subtype and an 8-byte CUC time, a 2-byte SID, and a CRC-16 PEC. Every packet, in both directions, travels between a sync header and a sync footer (default `2A2A2323` … `23232A2A`).
+
+| Telecommand (to the app) | SID | Telemetry reply | SID |
+|---|---|---|---|
+| SET: voltage, current, OVP, OCP, each with an apply flag | 1 | SET report: for each value, result, value sent and read-back | 102 |
+| OUTPUT: on (1) or off (0) | 2 | OUTPUT report: output state and result | 103 |
+| READ | 3 | READ report: status block (see below) | 101 |
+| a packet the app cannot read | | ERROR report | 199 |
+
+- **Housekeeping (SID 100)** is sent to the connected program **without a request after every poll**, at the sample rate in the connection bar (0.5–5 Hz). It holds the status block: connected, output on, mode CV/CC, trip, sequence running, measured voltage, current and power, set voltage, current limit, OVP and OCP. While the app is not connected to the supply, it is sent once per second with "connected" = 0.
+- Every reply starts with the TC's sequence count and an **error code** (0 = OK). The codes are listed in [REMOTE_PROTOCOL_CCSDS.md](REMOTE_PROTOCOL_CCSDS.md#error-codes). Housekeeping packets can arrive between a command and its reply, so the program tells packets apart by SID.
+- If bytes are lost or garbled, the app skips to the next sync header and answers the bad packet with an ERROR report.
+- APIDs (default 3), the sync header and footer, the service type / subtype / SID of every packet, the optional TC Source ID byte, the PEC check and the time epoch are in the `Ccsds` section of `settings.xml` (see [section 16](#settings-settingsxml)). Change them while the app is closed. Leave the sync header or footer empty to switch it off. Without a sync header, the app cannot resync and closes the connection after a bad packet.
+
+### 14.3 Safety and logging (both protocols)
 
 - **Remote control is off every time the app starts.** Switching it on is your go-ahead: remote commands do not need the controls unlocked and skip the confirmation.
 - Switching it off closes the connection at once.
@@ -339,9 +367,10 @@ The status bar then shows "Remote: waiting on port 9501", and "Remote: client 19
   - values outside the soft limits (voltage, current) or the OVP / OCP ranges are refused;
   - the output cannot be turned on while a trip is latched, until you press TRIP RESET;
   - `set` and turning on are refused while a sequence runs.
-- Every remote command is logged in the database with the source **Remote**, and shows as a marker on the plots and in History. Switching remote control on and off, and a client connecting and leaving, are logged as connection events.
+- Every remote command is logged in the database with the source **Remote**, and shows as a marker on the plots and in History. Switching remote control on and off (with the protocol), and a client connecting and leaving, are logged as connection events. Refused CCSDS packets are also listed in App Logs with the reason.
+- With the trace on (App Logs), every request and reply is in the trace file: JSON as text, CCSDS in hex with a short summary.
 
-**Settings:** the port is `RemotePort` in `settings.xml` (default 9501; the CPX400DP Controller uses 9500, so both apps can run on one PC). If the test program runs on another PC, allow `QPX1200SPController.exe` through Windows Firewall when Windows asks.
+**Settings:** the port is `RemotePort` in `settings.xml` (default 9501; the CPX400DP Controller uses 9500, so both apps can run on one PC). The protocol is `RemoteProtocol` (`Json` or `Ccsds`). If the test program runs on another PC, allow `QPX1200SPController.exe` through Windows Firewall when Windows asks.
 
 ---
 
@@ -407,7 +436,9 @@ To back up or archive the data, close the app and copy `powerlog.db`.
 
 ### Settings (`settings.xml`)
 
-Saved whenever you change something in the app: last IP address and the recent list, sample rate, theme, live plot markers, soft limits, data retention, "Ask before turning the output ON", alarm settings, the sequence (steps, cycles, output on/off), and the remote control port (the Remote control switch itself is not saved). Delete the file to start with the defaults.
+Saved whenever you change something in the app: last IP address and the recent list, sample rate, theme, live plot markers, soft limits, data retention, "Ask before turning the output ON", alarm settings, the sequence (steps, cycles, output on/off), and the remote control port and protocol (the Remote control switch itself is not saved). Delete the file to start with the defaults.
+
+The `Ccsds` section holds the CCSDS protocol settings ([section 14.2](#142-ccsds)): `TcApid`, `TmApid`, `SyncHeader`, `SyncFooter`, `TcHasSourceId`, `CheckTcPec`, `TimeEpoch`, and the service type, subtype and SID of each packet (`TcSet`, `TcOutput`, `TcRead`, `TmHousekeeping`, `TmReadReport`, `TmSetReport`, `TmOutputReport`, `TmErrorReport`). The app writes the defaults the first time it saves the file. Edit them while the app is closed. An invalid value goes back to its default, with a warning in App Logs. The full list with defaults is in [REMOTE_PROTOCOL_CCSDS.md](REMOTE_PROTOCOL_CCSDS.md#settings-settingsxml).
 
 ---
 

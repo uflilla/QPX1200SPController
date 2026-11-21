@@ -2,6 +2,8 @@
 
 Protocol version 1 · app v2.9 · 2026-10-30
 
+> Since v2.10 the app has two remote protocols on the same port, chosen with **Protocol** next to the Remote control switch (`RemoteProtocol` in `settings.xml`): **JSON**, described here and unchanged, and **CCSDS** (binary space packets with periodic housekeeping), described in [REMOTE_PROTOCOL_CCSDS.md](REMOTE_PROTOCOL_CCSDS.md). The status bar shows the protocol in use, e.g. "Remote: JSON, client 192.168.1.20".
+
 A test executing software (the "client") connects to this app over TCP. It can set the output, turn it on or off, and read it back. The app sends each command to the supply exactly like the buttons do, checking the result with `EER?` and a read-back, and logs it in the database. The reply tells the client what was sent and what the supply reported.
 
 The protocol is the same as the CPX400DP Controller's, so one client can drive both apps. The QPX1200SP has one output; the differences are listed at the end.

@@ -203,6 +203,11 @@
     <Compile Include="Models\LivePlotBuffer.cs" />
     <Compile Include="Helpers\Dialogs.cs" />
     <Compile Include="Services\RemoteServer.cs" />
+    <Compile Include="Services\RemoteModels.cs" />
+    <Compile Include="Services\JsonRemoteProtocol.cs" />
+    <Compile Include="Services\Ccsds\CcsdsCodec.cs" />
+    <Compile Include="Services\Ccsds\CcsdsRemoteProtocol.cs" />
+    <Compile Include="Models\CcsdsSettings.cs" />
     <Compile Include="ViewModels\RemoteCommandHandler.cs" />
     <Compile Include="Helpers\PlotHover.cs" />
     <Compile Include="Helpers\LivePlotPresenter.cs" />

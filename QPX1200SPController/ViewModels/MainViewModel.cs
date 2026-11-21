@@ -36,6 +36,8 @@ namespace QPX1200SPController.ViewModels
         private readonly DispatcherTimer _pollTimer;
         private readonly DispatcherTimer _statusBarTimer;
         private readonly RemoteServer _remoteServer;
+        private readonly RemoteCommandHandler _remoteCommands;
+        private RemoteProtocolOption _selectedRemoteProtocol;
 
         private bool _pollInProgress;
         private bool _shutdownInProgress;
@@ -288,6 +290,10 @@ namespace QPX1200SPController.ViewModels
             TraceService.Instance.CheckExpiry();
             IsTraceOn = TraceService.Instance.IsEnabled;
             TraceStatusText = IsTraceOn ? $"Trace ON until {TraceService.Instance.EnabledUntil:HH:mm}" : null;
+
+            // CCSDS housekeeping goes on once per second while there are no polls (not connected to the supply).
+            if (!IsConnected && _remoteServer?.ClientAddress != null)
+                _remoteServer.PublishHousekeeping(RemoteStatus.Disconnected(DateTime.Now));
         }
 
         #endregion
@@ -556,8 +562,10 @@ namespace QPX1200SPController.ViewModels
             _powerSupplyService.ConnectionStateChanged += OnConnectionStateChanged;
             _powerSupplyService.ActivityRecorded += OnActivityRecorded;
 
-            _remoteServer = new RemoteServer(new RemoteCommandHandler(this).HandleAsync);
+            _remoteCommands = new RemoteCommandHandler(this);
+            _remoteServer = new RemoteServer();
             _remoteServer.ClientChanged += OnRemoteClientChanged;
+            _selectedRemoteProtocol = RemoteProtocols.FirstOrDefault(p => p.Kind == _settings.RemoteProtocol) ?? RemoteProtocols[0];
         }
 
         public ICommand ToggleThemeCommand { get; }
@@ -840,6 +848,10 @@ namespace QPX1200SPController.ViewModels
                     if (settings != null)
                         PowerSupplySettingStatus = settings;
                 }
+
+                // CCSDS housekeeping: every poll, with this poll's readings (JSON has none).
+                if (status != null && _remoteServer.ClientAddress != null)
+                    _remoteServer.PublishHousekeeping(RemoteStatus.From(status, PowerSupplySettingStatus, IsSequenceRunning));
             }
             catch (Exception ex)
             {
@@ -1290,7 +1302,38 @@ namespace QPX1200SPController.ViewModels
             }
         }
 
-        /// <summary>"Remote: off", "Remote: waiting on port 9501" or "Remote: client 192.168.1.20".</summary>
+        /// <summary>The remote protocols the operator can pick in the connection bar.</summary>
+        public IReadOnlyList<RemoteProtocolOption> RemoteProtocols { get; } = new List<RemoteProtocolOption>
+        {
+            new RemoteProtocolOption(RemoteProtocolKind.Json, "JSON"),
+            new RemoteProtocolOption(RemoteProtocolKind.Ccsds, "CCSDS")
+        };
+
+        /// <summary>Protocol used the next time Remote control is switched on. Persisted in settings.xml; fixed while it is on.</summary>
+        public RemoteProtocolOption SelectedRemoteProtocol
+        {
+            get => _selectedRemoteProtocol;
+            set
+            {
+                if (value == null || value == _selectedRemoteProtocol)
+                    return;
+                if (IsRemoteControlOn)
+                {
+                    RaisePropertyChanged(); // the combo box goes back
+                    return;
+                }
+                _selectedRemoteProtocol = value;
+                RaisePropertyChanged();
+                if (_settings.RemoteProtocol != value.Kind)
+                {
+                    _settings.RemoteProtocol = value.Kind;
+                    _settings.Save();
+                    LoggingService.Instance.LogInfo($"Remote protocol set to {value.DisplayName}.", nameof(MainViewModel), nameof(SelectedRemoteProtocol));
+                }
+            }
+        }
+
+        /// <summary>"Remote: off", "Remote: CCSDS, waiting on port 9501" or "Remote: JSON, client 192.168.1.20".</summary>
         public string RemoteStatusText
         {
             get => _remoteStatusText;
@@ -1300,9 +1343,27 @@ namespace QPX1200SPController.ViewModels
         private void StartRemoteControl()
         {
             int port = _settings.RemotePort;
+            IRemoteProtocol protocol;
+            if (_selectedRemoteProtocol.Kind == RemoteProtocolKind.Ccsds)
+            {
+                string problem = _settings.Ccsds.Validate();
+                if (problem != null)
+                {
+                    LoggingService.Instance.LogWarning($"Remote control (CCSDS) not started: {problem}", nameof(MainViewModel), nameof(StartRemoteControl));
+                    RaisePropertyChanged(nameof(IsRemoteControlOn)); // the switch goes back off
+                    _ = Dialogs.InfoAsync("Remote control not started", problem + "\n\nCorrect the Ccsds section of settings.xml while the app is closed.", isError: true);
+                    return;
+                }
+                protocol = new Services.Ccsds.CcsdsRemoteProtocol(_remoteCommands, _settings.Ccsds);
+            }
+            else
+            {
+                protocol = new JsonRemoteProtocol(_remoteCommands);
+            }
+
             try
             {
-                _remoteServer.Start(port);
+                _remoteServer.Start(port, protocol);
             }
             catch (System.Net.Sockets.SocketException ex)
             {
@@ -1317,14 +1378,19 @@ namespace QPX1200SPController.ViewModels
 
             _isRemoteControlOn = true;
             RaisePropertyChanged(nameof(IsRemoteControlOn));
-            LogConnection("Remote control on", $"listening on port {port}", "Operator");
+            RaisePropertyChanged(nameof(CanChangeRemoteProtocol));
+            LogConnection("Remote control on", $"listening on port {port} ({protocol.Name})", "Operator");
             UpdateRemoteStatus();
         }
+
+        /// <summary>The protocol can be changed only while Remote control is off.</summary>
+        public bool CanChangeRemoteProtocol => !IsRemoteControlOn;
 
         private void StopRemoteControl(string detail)
         {
             _isRemoteControlOn = false;
             RaisePropertyChanged(nameof(IsRemoteControlOn));
+            RaisePropertyChanged(nameof(CanChangeRemoteProtocol));
             _remoteServer.Stop();
             LogConnection("Remote control off", detail, "Operator");
             UpdateRemoteStatus();
@@ -1347,12 +1413,13 @@ namespace QPX1200SPController.ViewModels
 
         private void UpdateRemoteStatus()
         {
+            string name = _remoteServer.Protocol?.Name;
             if (!_remoteServer.IsListening)
                 RemoteStatusText = "Remote: off";
             else if (_remoteServer.ClientAddress != null)
-                RemoteStatusText = $"Remote: client {_remoteServer.ClientAddress}";
+                RemoteStatusText = $"Remote: {name}, client {_remoteServer.ClientAddress}";
             else
-                RemoteStatusText = $"Remote: waiting on port {_remoteServer.Port}";
+                RemoteStatusText = $"Remote: {name}, waiting on port {_remoteServer.Port}";
         }
 
         /// <summary>Writes a connection record (database, Data Logs, live-plot marker) for an app-side event.</summary>
@@ -1458,6 +1525,20 @@ namespace QPX1200SPController.ViewModels
 
         public double Hz { get; }
         public TimeSpan Interval { get; }
+        public string DisplayName { get; }
+
+        public override string ToString() => DisplayName;
+    }
+
+    public sealed class RemoteProtocolOption
+    {
+        public RemoteProtocolOption(RemoteProtocolKind kind, string displayName)
+        {
+            Kind = kind;
+            DisplayName = displayName;
+        }
+
+        public RemoteProtocolKind Kind { get; }
         public string DisplayName { get; }
 
         public override string ToString() => DisplayName;

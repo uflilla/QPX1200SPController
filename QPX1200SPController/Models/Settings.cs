@@ -44,6 +44,12 @@ namespace QPX1200SPController.Models
         /// <summary>TCP port of the remote control server (docs/REMOTE_PROTOCOL.md). The switch itself is not saved.</summary>
         public int RemotePort { get; set; } = DefaultRemotePort;
 
+        /// <summary>Wire format of the remote control server: JSON lines or CCSDS packets (docs/REMOTE_PROTOCOL_CCSDS.md).</summary>
+        public RemoteProtocolKind RemoteProtocol { get; set; } = RemoteProtocolKind.Json;
+
+        /// <summary>APIDs, sync markers and packet identification for the CCSDS protocol.</summary>
+        public CcsdsSettings Ccsds { get; set; } = new CcsdsSettings();
+
         /// <summary>Most recently used first.</summary>
         public List<string> RecentIpAddresses { get; set; } = new List<string>();
 
@@ -114,6 +120,11 @@ namespace QPX1200SPController.Models
 
             if (RemotePort <= 0 || RemotePort > 65535)
                 RemotePort = DefaultRemotePort;
+            if (!Enum.IsDefined(typeof(RemoteProtocolKind), RemoteProtocol))
+                RemoteProtocol = RemoteProtocolKind.Json;
+            if (Ccsds == null)
+                Ccsds = new CcsdsSettings();
+            Ccsds.Sanitize();
             if (RetentionDays < 0)
                 RetentionDays = 0;
 
